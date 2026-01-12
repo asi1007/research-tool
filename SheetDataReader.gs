@@ -39,9 +39,9 @@ class SheetDataReader {
   /**
    * @param {string} url - スプレッドシートのURL
    * @param {string} sheetName - シート名
-   * @param {number} headerRow - ヘッダ行番号（1始まり、デフォルト: 1）
+   * @param {number} headerRow - ヘッダ行番号（1始まり、デフォルト: 3）
    */
-  constructor(url, sheetName, headerRow = 1) {
+  constructor(url, sheetName, headerRow = 3) {
     this.url = url;
     this.sheetName = sheetName;
     this.headerRow = headerRow;
@@ -56,26 +56,38 @@ class SheetDataReader {
   load() {
     const spreadsheet = SpreadsheetApp.openByUrl(this.url);
     const sheet = spreadsheet.getSheetByName(this.sheetName);
-    
+
     if (!sheet) {
       throw new Error(`シート "${this.sheetName}" が見つかりません`);
     }
-    
+
     const lastRow = sheet.getLastRow();
     const lastColumn = sheet.getLastColumn();
-    
+
     if (lastRow < this.headerRow) {
       throw new Error(`ヘッダ行 ${this.headerRow} がシートの範囲を超えています`);
     }
-    
-    // ヘッダを取得
+
+    // ヘッダを取得（3行目を取得）
     this.headers = sheet.getRange(this.headerRow, 1, 1, lastColumn).getValues()[0];
-    
+
+    // 3行目が空の場合は2行目の値を使用（結合セル対応）
+    if (this.headerRow > 1) {
+      const headerRowAbove = sheet.getRange(this.headerRow - 1, 1, 1, lastColumn).getValues()[0];
+
+      this.headers = this.headers.map((header, index) => {
+        if (header === '' || header === null || header === undefined) {
+          return headerRowAbove[index] || '';
+        }
+        return header;
+      });
+    }
+
     // データ行を取得
     if (lastRow > this.headerRow) {
       const dataStartRow = this.headerRow + 1;
       const dataValues = sheet.getRange(dataStartRow, 1, lastRow - this.headerRow, lastColumn).getValues();
-      
+
       this.rows = dataValues.map(rowData => new SheetRow(this.headers, rowData));
     }
   }
@@ -129,42 +141,148 @@ class SheetDataReader {
   forEach(callback) {
     this.rows.forEach(callback);
   }
+
+  /**
+   * 指定した行のデータを更新
+   * @param {number} rowIndex - 行インデックス（0始まり）
+   * @param {Object} data - 更新するデータ（ヘッダ名: 値のオブジェクト）
+   */
+  updateRow(rowIndex, data) {
+    const spreadsheet = SpreadsheetApp.openByUrl(this.url);
+    const sheet = spreadsheet.getSheetByName(this.sheetName);
+
+    if (!sheet) {
+      throw new Error(`シート "${this.sheetName}" が見つかりません`);
+    }
+
+    if (rowIndex < 0 || rowIndex >= this.rows.length) {
+      throw new Error(`行インデックス ${rowIndex} が範囲外です`);
+    }
+
+    const actualRow = this.headerRow + 1 + rowIndex;
+
+    Object.keys(data).forEach(headerName => {
+      const columnIndex = this.headers.indexOf(headerName);
+      if (columnIndex === -1) {
+        throw new Error(`ヘッダ "${headerName}" が見つかりません`);
+      }
+
+      const cell = sheet.getRange(actualRow, columnIndex + 1);
+      cell.setValue(data[headerName]);
+
+      this.rows[rowIndex].data[headerName] = data[headerName];
+    });
+  }
+
+  /**
+   * 新しい行をシートの最後に追加
+   * @param {Object} data - 追加するデータ（ヘッダ名: 値のオブジェクト）
+   * @return {number} 追加された行のインデックス
+   */
+  addRow(data) {
+    const spreadsheet = SpreadsheetApp.openByUrl(this.url);
+    const sheet = spreadsheet.getSheetByName(this.sheetName);
+
+    if (!sheet) {
+      throw new Error(`シート "${this.sheetName}" が見つかりません`);
+    }
+
+    const lastRow = sheet.getLastRow();
+    const newRowNumber = lastRow + 1;
+
+    const rowData = this.headers.map(header => data[header] || '');
+
+    sheet.getRange(newRowNumber, 1, 1, rowData.length).setValues([rowData]);
+
+    const newRow = new SheetRow(this.headers, rowData);
+    this.rows.push(newRow);
+
+    return this.rows.length - 1;
+  }
+
+  /**
+   * 複数の行を一括で追加
+   * @param {Object[]} dataArray - 追加するデータの配列
+   * @return {number[]} 追加された行のインデックスの配列
+   */
+  addRows(dataArray) {
+    const spreadsheet = SpreadsheetApp.openByUrl(this.url);
+    const sheet = spreadsheet.getSheetByName(this.sheetName);
+
+    if (!sheet) {
+      throw new Error(`シート "${this.sheetName}" が見つかりません`);
+    }
+
+    const lastRow = sheet.getLastRow();
+    const newRowStart = lastRow + 1;
+
+    const rowsData = dataArray.map(data =>
+      this.headers.map(header => data[header] || '')
+    );
+
+    sheet.getRange(newRowStart, 1, rowsData.length, this.headers.length)
+      .setValues(rowsData);
+
+    const addedIndices = [];
+    rowsData.forEach(rowData => {
+      const newRow = new SheetRow(this.headers, rowData);
+      this.rows.push(newRow);
+      addedIndices.push(this.rows.length - 1);
+    });
+
+    return addedIndices;
+  }
+
+  /**
+   * 指定した行を削除
+   * @param {number} rowIndex - 削除する行のインデックス（0始まり）
+   */
+  deleteRow(rowIndex) {
+    const spreadsheet = SpreadsheetApp.openByUrl(this.url);
+    const sheet = spreadsheet.getSheetByName(this.sheetName);
+
+    if (!sheet) {
+      throw new Error(`シート "${this.sheetName}" が見つかりません`);
+    }
+
+    if (rowIndex < 0 || rowIndex >= this.rows.length) {
+      throw new Error(`行インデックス ${rowIndex} が範囲外です`);
+    }
+
+    const actualRow = this.headerRow + 1 + rowIndex;
+    sheet.deleteRow(actualRow);
+
+    this.rows.splice(rowIndex, 1);
+  }
+
+  /**
+   * 特定のセルの値を更新
+   * @param {number} rowIndex - 行インデックス（0始まり）
+   * @param {string} headerName - ヘッダ名
+   * @param {*} value - 設定する値
+   */
+  setCellValue(rowIndex, headerName, value) {
+    const spreadsheet = SpreadsheetApp.openByUrl(this.url);
+    const sheet = spreadsheet.getSheetByName(this.sheetName);
+
+    if (!sheet) {
+      throw new Error(`シート "${this.sheetName}" が見つかりません`);
+    }
+
+    if (rowIndex < 0 || rowIndex >= this.rows.length) {
+      throw new Error(`行インデックス ${rowIndex} が範囲外です`);
+    }
+
+    const columnIndex = this.headers.indexOf(headerName);
+    if (columnIndex === -1) {
+      throw new Error(`ヘッダ "${headerName}" が見つかりません`);
+    }
+
+    const actualRow = this.headerRow + 1 + rowIndex;
+    const cell = sheet.getRange(actualRow, columnIndex + 1);
+    cell.setValue(value);
+
+    this.rows[rowIndex].data[headerName] = value;
+  }
 }
 
-// 使用例
-function example() {
-  // スプレッドシートのURL、シート名、ヘッダ行を指定
-  const url = 'https://docs.google.com/spreadsheets/d/YOUR_SPREADSHEET_ID/edit';
-  const sheetName = 'シート1';
-  const headerRow = 1;
-  
-  // データを読み込む
-  const reader = new SheetDataReader(url, sheetName, headerRow);
-  
-  // すべての行を取得
-  const rows = reader.getRows();
-  
-  // 各行のデータにヘッダ名でアクセス
-  rows.forEach((row, index) => {
-    Logger.log(`行 ${index + 1}:`);
-    Logger.log(`  名前: ${row.get('名前')}`);
-    Logger.log(`  年齢: ${row.get('年齢')}`);
-    Logger.log(`  メール: ${row.get('メール')}`);
-  });
-  
-  // 特定の行を取得
-  const firstRow = reader.getRow(0);
-  if (firstRow) {
-    Logger.log(`最初の行の名前: ${firstRow.get('名前')}`);
-  }
-  
-  // 条件で絞り込み
-  const filtered = reader.filter(row => row.get('年齢') > 20);
-  Logger.log(`20歳以上: ${filtered.length}人`);
-  
-  // ヘッダ一覧を表示
-  Logger.log(`ヘッダ: ${reader.getHeaders().join(', ')}`);
-  
-  // 行数を取得
-  Logger.log(`総行数: ${reader.getRowCount()}`);
-}
