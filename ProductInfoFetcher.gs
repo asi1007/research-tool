@@ -33,7 +33,7 @@ class KeepaClient {
   }
 
   fetchProductData(asin) {
-    const url = `${this.baseUrl}/product?key=${this.apiKey}&domain=1&asin=${asin}`;
+    const url = `${this.baseUrl}/product?key=${this.apiKey}&domain=5&asin=${asin}`;
 
     const options = {
       method: 'get',
