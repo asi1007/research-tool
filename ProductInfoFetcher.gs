@@ -389,10 +389,15 @@ function fetchAndWriteToSheet(asinColumnName) {
     return;
   }
 
+  Logger.log(`アクティブ行: ${activeRow}`);
+  Logger.log(`ヘッダ行: ${headerRow}`);
+
   const rowIndex = activeRow - headerRow - 1;
+  Logger.log(`計算されたrowIndex: ${rowIndex}`);
+
   const row = reader.getRow(rowIndex);
 
-  Logger.log(`rowIndex: ${rowIndex}`);
+  Logger.log(`row存在チェック: ${row ? 'あり' : 'なし'}`);
   Logger.log(`row data: ${JSON.stringify(row ? row.toObject() : null)}`);
 
   if (!row) {
@@ -400,9 +405,11 @@ function fetchAndWriteToSheet(asinColumnName) {
     return;
   }
 
+  Logger.log(`ASIN列名: "${asinColumnName}"`);
   const asin = row.get(asinColumnName);
 
-  Logger.log(`ASIN列の値: ${asin}`);
+  Logger.log(`ASIN列の値: "${asin}"`);
+  Logger.log(`ASIN列の値の型: ${typeof asin}`);
 
   if (!asin || asin === '') {
     Logger.log('ASIN が空です。');
