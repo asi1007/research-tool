@@ -1,6 +1,6 @@
 /**
  * スプレッドシートの行データを表すクラス
- * ヘッダ名でデータにアクセス可能
+ * ASIN列のみを保持
  */
 class SheetRow {
   /**
@@ -8,27 +8,28 @@ class SheetRow {
    * @param {Array} rowData - データ行の配列
    */
   constructor(headers, rowData) {
-    this.data = {};
-    headers.forEach((header, index) => {
-      this.data[header] = rowData[index];
-    });
+    const asinIndex = headers.indexOf('ASIN');
+    this.asin = asinIndex !== -1 ? rowData[asinIndex] : '';
   }
-  
+
   /**
    * ヘッダ名でデータを取得
    * @param {string} headerName - ヘッダ名
    * @return {*} セルの値
    */
   get(headerName) {
-    return this.data[headerName];
+    if (headerName === 'ASIN') {
+      return this.asin;
+    }
+    return undefined;
   }
-  
+
   /**
    * すべてのデータを取得
    * @return {Object} データオブジェクト
    */
   toObject() {
-    return {...this.data};
+    return { ASIN: this.asin };
   }
 }
 
@@ -84,16 +85,16 @@ class SheetDataReader {
    * @return {SheetRow} 行オブジェクト
    */
   loadRow(rowNumber) {
-    if (!this.sheet) {
-      this.loadHeaders();
-    }
-
+    this.loadHeaders();
     if (rowNumber <= this.headerRow) {
       throw new Error(`行番号 ${rowNumber} はヘッダ行以下です`);
     }
 
     const lastColumn = this.sheet.getLastColumn();
+    Logger.log(`loadRow: 行番号=${rowNumber}, 最終列=${lastColumn}`);
+
     const rowData = this.sheet.getRange(rowNumber, 1, 1, lastColumn).getValues()[0];
+    Logger.log(`取得した行データ: ${JSON.stringify(rowData)}`);
 
     return new SheetRow(this.headers, rowData);
   }
