@@ -9,6 +9,7 @@ class ProductInfo {
     this.salesCommission = data.salesCommission || 0;
     this.fbaFee = data.fbaFee || 0;
     this.buyBoxPrice = data.buyBoxPrice || 0;
+    this.monthlySold = data.monthlySold || 0;
   }
 
   toObject() {
@@ -21,7 +22,8 @@ class ProductInfo {
       weight: this.weight,
       salesCommission: this.salesCommission,
       fbaFee: this.fbaFee,
-      buyBoxPrice: this.buyBoxPrice
+      buyBoxPrice: this.buyBoxPrice,
+      monthlySold: this.monthlySold
     };
   }
 }
@@ -53,51 +55,85 @@ class KeepaClient {
       throw new Error(`Product not found: ${asin}`);
     }
 
-    Logger.log('=== Keepa API レスポンス（販売数関連） ===');
-    const product = data.products[0];
-    Logger.log(`monthlySold: ${product.monthlySold}`);
-    Logger.log(`stats: ${JSON.stringify(product.stats)}`);
-    Logger.log(`salesRanks: ${JSON.stringify(product.salesRanks)}`);
-
     return data.products[0];
   }
 
   extractProductInfo(keepaData) {
     const product = keepaData;
 
+    // 発売日の取得（0や-1は無効な値として扱う）
+    let releaseDate = '';
+
+    if (product.releaseDate && product.releaseDate > 0) {
+      releaseDate = this.convertKeepaTime(product.releaseDate);
+    } else if (product.publicationDate && product.publicationDate > 0) {
+      releaseDate = this.convertReleaseDateFormat(product.publicationDate);
+    } else if (product.availabilityAmazon && product.availabilityAmazon > 0) {
+      releaseDate = this.convertKeepaTime(product.availabilityAmazon);
+    }
+    // 上記すべて無効な場合は空文字列のまま（SP-APIから取得する）
+
     return {
       asin: product.asin || '',
       title: product.title || '',
       imageUrl: product.imagesCSV ? product.imagesCSV.split(',')[0] : '',
-      releaseDate: this.convertKeepaTime(product.releaseDate),
+      releaseDate: releaseDate,
       size: {
         length: product.packageLength || 0,
         width: product.packageWidth || 0,
         height: product.packageHeight || 0
       },
       weight: product.packageWeight || 0,
-      buyBoxPrice: this.extractBuyBoxPrice(product)
+      buyBoxPrice: this.extractBuyBoxPrice(product),
+      monthlySold: product.monthlySold || 0
     };
   }
 
+  convertReleaseDateFormat(dateValue) {
+    if (!dateValue) return '';
+
+    const dateStr = String(dateValue);
+    // YYYYMMDD形式（例：20190523）をYYYY-MM-DDに変換
+    if (dateStr.length === 8 && /^\d{8}$/.test(dateStr)) {
+      const year = dateStr.substring(0, 4);
+      const month = dateStr.substring(4, 6);
+      const day = dateStr.substring(6, 8);
+      return `${year}-${month}-${day}`;
+    }
+
+    return dateStr;
+  }
+
   extractBuyBoxPrice(keepaData) {
-    if (!keepaData.csv || !keepaData.csv[18]) {
+    if (!keepaData.csv) {
       return null;
     }
 
-    const buyBoxPriceHistory = keepaData.csv[18];
-
-    if (buyBoxPriceHistory.length < 2) {
-      return null;
+    // csv[18]: Buy Box価格を優先
+    if (keepaData.csv[18] && keepaData.csv[18].length >= 2) {
+      const latestPrice = keepaData.csv[18][keepaData.csv[18].length - 1];
+      if (latestPrice !== -1) {
+        return latestPrice;
+      }
     }
 
-    const latestPrice = buyBoxPriceHistory[buyBoxPriceHistory.length - 1];
-
-    if (latestPrice === -1) {
-      return null;
+    // csv[1]: 新品価格をフォールバック
+    if (keepaData.csv[1] && keepaData.csv[1].length >= 2) {
+      const latestPrice = keepaData.csv[1][keepaData.csv[1].length - 1];
+      if (latestPrice !== -1) {
+        return latestPrice;
+      }
     }
 
-    return latestPrice / 100;
+    // csv[0]: Amazon価格を最後のフォールバック
+    if (keepaData.csv[0] && keepaData.csv[0].length >= 2) {
+      const latestPrice = keepaData.csv[0][keepaData.csv[0].length - 1];
+      if (latestPrice !== -1) {
+        return latestPrice;
+      }
+    }
+
+    return null;
   }
 
   convertKeepaTime(keepaMinutes) {
@@ -292,7 +328,8 @@ class ProductInfoFetcher {
       weight: 0,
       salesCommission: 0,
       fbaFee: 0,
-      buyBoxPrice: 0
+      buyBoxPrice: 0,
+      monthlySold: 0
     };
 
     let buyBoxPrice = estimatedPrice;
@@ -310,6 +347,7 @@ class ProductInfoFetcher {
       productData.releaseDate = keepaInfo.releaseDate || productData.releaseDate;
       productData.size = keepaInfo.size || productData.size;
       productData.weight = keepaInfo.weight || productData.weight;
+      productData.monthlySold = keepaInfo.monthlySold || 0;
 
       if (keepaInfo.buyBoxPrice !== null) {
         buyBoxPrice = keepaInfo.buyBoxPrice;
@@ -448,24 +486,42 @@ function fetchAndWriteToSheet(asinColumnName) {
     Logger.log(`重量: ${productInfo.weight}`);
     Logger.log(`販売手数料: ${productInfo.salesCommission}`);
     Logger.log(`配送代行手数料: ${productInfo.fbaFee}`);
+    Logger.log(`月間販売数: ${productInfo.monthlySold}`);
 
     const amazonUrl = `https://www.amazon.co.jp/dp/${asin}`;
-    const imageFormula = productInfo.imageUrl
-      ? `=HYPERLINK("${amazonUrl}", IMAGE("${productInfo.imageUrl}"))`
-      : '';
+    let imageFormula = '';
+    if (productInfo.imageUrl) {
+      // 画像URLが完全なURLでない場合（ファイル名のみの場合）、Amazon画像URLを構築
+      const fullImageUrl = productInfo.imageUrl.startsWith('http')
+        ? productInfo.imageUrl
+        : `https://m.media-amazon.com/images/I/${productInfo.imageUrl}`;
+      imageFormula = `=HYPERLINK("${amazonUrl}", IMAGE("${fullImageUrl}"))`;
+    }
 
-    const updateData = {
+    const allUpdateData = {
       '商品名': productInfo.title,
       '画像URL': imageFormula,
       '発売日': productInfo.releaseDate,
       'カート価格': productInfo.buyBoxPrice,
-      'サイズ(長さ)': productInfo.size.length || '',
+      '数量': productInfo.monthlySold,
+      'サイズ（長さ）': productInfo.size.length || '',
       'サイズ(幅)': productInfo.size.width || '',
-      'サイズ(高さ)': productInfo.size.height || '',
+      ' サイズ(高さ)': productInfo.size.height || '',
       '重量': productInfo.weight,
       '販売手数料': productInfo.salesCommission,
-      '配送代行手数料': productInfo.fbaFee
+      '配送代行手数料（FBA手数料）': productInfo.fbaFee,
+      '販売数/FBA数': productInfo.monthlySold
     };
+
+    // 存在するヘッダのみに絞り込み
+    const updateData = {};
+    Object.keys(allUpdateData).forEach(headerName => {
+      if (headers.includes(headerName)) {
+        updateData[headerName] = allUpdateData[headerName];
+      } else {
+        Logger.log(`ヘッダ "${headerName}" が存在しないためスキップします`);
+      }
+    });
 
     Logger.log('=== 書き込むデータ ===');
     Logger.log(JSON.stringify(updateData, null, 2));
