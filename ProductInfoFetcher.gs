@@ -372,6 +372,8 @@ function fetchAndWriteToSheet(asinColumnName) {
   const sheetName = sheet.getName();
 
   const reader = new SheetDataReader(spreadsheetUrl, sheetName);
+  reader.loadHeaders();
+
   const fetcher = new ProductInfoFetcher(keepaApiKey, spApiConfig);
 
   const headerRow = reader.headerRow;
@@ -387,12 +389,8 @@ function fetchAndWriteToSheet(asinColumnName) {
   }
 
   Logger.log(`アクティブ行: ${activeRow}`);
-  Logger.log(`ヘッダ行: ${headerRow}`);
 
-  const rowIndex = activeRow - headerRow - 1;
-  Logger.log(`計算されたrowIndex: ${rowIndex}`);
-
-  const row = reader.getRow(rowIndex);
+  const row = reader.loadRow(activeRow);
 
   Logger.log(`row存在チェック: ${row ? 'あり' : 'なし'}`);
   Logger.log(`row data: ${JSON.stringify(row ? row.toObject() : null)}`);
@@ -418,6 +416,16 @@ function fetchAndWriteToSheet(asinColumnName) {
 
     const productInfo = fetcher.fetchProductInfo(asin);
 
+    Logger.log('=== 取得した商品情報 ===');
+    Logger.log(`商品名: ${productInfo.title}`);
+    Logger.log(`画像URL: ${productInfo.imageUrl}`);
+    Logger.log(`発売日: ${productInfo.releaseDate}`);
+    Logger.log(`カート価格: ${productInfo.buyBoxPrice}`);
+    Logger.log(`サイズ: ${JSON.stringify(productInfo.size)}`);
+    Logger.log(`重量: ${productInfo.weight}`);
+    Logger.log(`販売手数料: ${productInfo.salesCommission}`);
+    Logger.log(`配送代行手数料: ${productInfo.fbaFee}`);
+
     const updateData = {
       '商品名': productInfo.title,
       '画像URL': productInfo.imageUrl,
@@ -431,7 +439,10 @@ function fetchAndWriteToSheet(asinColumnName) {
       '配送代行手数料': productInfo.fbaFee
     };
 
-    reader.updateRow(rowIndex, updateData);
+    Logger.log('=== 書き込むデータ ===');
+    Logger.log(JSON.stringify(updateData, null, 2));
+
+    reader.updateRowByNumber(activeRow, updateData);
 
     Logger.log(`更新完了 - ${productInfo.title} (カート価格: $${productInfo.buyBoxPrice})`);
 

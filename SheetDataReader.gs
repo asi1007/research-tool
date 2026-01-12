@@ -46,12 +46,60 @@ class SheetDataReader {
     this.sheetName = sheetName;
     this.headerRow = headerRow;
     this.headers = [];
-    this.rows = [];
-    this.load();
+    this.sheet = null;
   }
   
   /**
-   * データを読み込む
+   * ヘッダーのみを読み込む
+   */
+  loadHeaders() {
+    const spreadsheet = SpreadsheetApp.openByUrl(this.url);
+    this.sheet = spreadsheet.getSheetByName(this.sheetName);
+
+    if (!this.sheet) {
+      throw new Error(`シート "${this.sheetName}" が見つかりません`);
+    }
+
+    const lastColumn = this.sheet.getLastColumn();
+
+    // ヘッダを取得（3行目を取得）
+    this.headers = this.sheet.getRange(this.headerRow, 1, 1, lastColumn).getValues()[0];
+
+    // 3行目が空の場合は2行目の値を使用（結合セル対応）
+    if (this.headerRow > 1) {
+      const headerRowAbove = this.sheet.getRange(this.headerRow - 1, 1, 1, lastColumn).getValues()[0];
+
+      this.headers = this.headers.map((header, index) => {
+        if (header === '' || header === null || header === undefined) {
+          return headerRowAbove[index] || '';
+        }
+        return header;
+      });
+    }
+  }
+
+  /**
+   * 特定の行のみを読み込む
+   * @param {number} rowNumber - 読み込む行番号（1始まり）
+   * @return {SheetRow} 行オブジェクト
+   */
+  loadRow(rowNumber) {
+    if (!this.sheet) {
+      this.loadHeaders();
+    }
+
+    if (rowNumber <= this.headerRow) {
+      throw new Error(`行番号 ${rowNumber} はヘッダ行以下です`);
+    }
+
+    const lastColumn = this.sheet.getLastColumn();
+    const rowData = this.sheet.getRange(rowNumber, 1, 1, lastColumn).getValues()[0];
+
+    return new SheetRow(this.headers, rowData);
+  }
+
+  /**
+   * データを読み込む（すべての行）
    */
   load() {
     const spreadsheet = SpreadsheetApp.openByUrl(this.url);
@@ -86,7 +134,13 @@ class SheetDataReader {
     // データ行を取得
     if (lastRow > this.headerRow) {
       const dataStartRow = this.headerRow + 1;
+      Logger.log(`データ取得範囲: R${dataStartRow}C1:R${lastRow}C${lastColumn} （${lastRow - this.headerRow}行, ${lastColumn}列）`);
       const dataValues = sheet.getRange(dataStartRow, 1, lastRow - this.headerRow, lastColumn).getValues();
+      Logger.log(`取得したデータ行数: ${dataValues.length}`);
+      Logger.log('取得データの中身:');
+      dataValues.forEach((row, idx) => {
+        Logger.log(`  [${idx}] ${JSON.stringify(row)}`);
+      });
 
       this.rows = dataValues.map(rowData => new SheetRow(this.headers, rowData));
     }
@@ -106,7 +160,9 @@ class SheetDataReader {
    * @return {SheetRow|null} 行オブジェクト
    */
   getRow(index) {
-    return this.rows[index] || null;
+    console.log(`getRow: ${index}`);
+    console.log('this.rows: ' + JSON.stringify(this.rows[index].toObject()));
+    return this.rows[index] ;
   }
   
   /**
@@ -140,6 +196,36 @@ class SheetDataReader {
    */
   forEach(callback) {
     this.rows.forEach(callback);
+  }
+
+  /**
+   * 指定した行番号のデータを更新
+   * @param {number} rowNumber - 行番号（1始まり）
+   * @param {Object} data - 更新するデータ（ヘッダ名: 値のオブジェクト）
+   */
+  updateRowByNumber(rowNumber, data) {
+    if (!this.sheet) {
+      const spreadsheet = SpreadsheetApp.openByUrl(this.url);
+      this.sheet = spreadsheet.getSheetByName(this.sheetName);
+    }
+
+    if (!this.sheet) {
+      throw new Error(`シート "${this.sheetName}" が見つかりません`);
+    }
+
+    if (rowNumber <= this.headerRow) {
+      throw new Error(`行番号 ${rowNumber} はヘッダ行以下です`);
+    }
+
+    Object.keys(data).forEach(headerName => {
+      const columnIndex = this.headers.indexOf(headerName);
+      if (columnIndex === -1) {
+        throw new Error(`ヘッダ "${headerName}" が見つかりません`);
+      }
+
+      const cell = this.sheet.getRange(rowNumber, columnIndex + 1);
+      cell.setValue(data[headerName]);
+    });
   }
 
   /**
