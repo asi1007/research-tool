@@ -392,12 +392,17 @@ function fetchAndWriteToSheet(asinColumnName) {
   const rowIndex = activeRow - headerRow - 1;
   const row = reader.getRow(rowIndex);
 
+  Logger.log(`rowIndex: ${rowIndex}`);
+  Logger.log(`row data: ${JSON.stringify(row ? row.toObject() : null)}`);
+
   if (!row) {
     Logger.log('選択された行にデータが存在しません。');
     return;
   }
 
   const asin = row.get(asinColumnName);
+
+  Logger.log(`ASIN列の値: ${asin}`);
 
   if (!asin || asin === '') {
     Logger.log('ASIN が空です。');
