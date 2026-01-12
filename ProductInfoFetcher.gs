@@ -111,6 +111,26 @@ class SpApiClient {
     this.marketplaceId = config.marketplaceId || 'ATVPDKIKX0DER';
     this.accessToken = null;
     this.tokenExpiry = null;
+    this.endpoint = this.getEndpoint();
+    this.currency = this.getCurrency();
+  }
+
+  getEndpoint() {
+    const endpointMap = {
+      'us-east-1': 'https://sellingpartnerapi-na.amazon.com',
+      'eu-west-1': 'https://sellingpartnerapi-eu.amazon.com',
+      'us-west-2': 'https://sellingpartnerapi-fe.amazon.com'
+    };
+    return endpointMap[this.region] || endpointMap['us-east-1'];
+  }
+
+  getCurrency() {
+    const currencyMap = {
+      'ATVPDKIKX0DER': 'USD',
+      'A1F83G8C2ARO7P': 'GBP',
+      'A1VC38T7YXB528': 'JPY'
+    };
+    return currencyMap[this.marketplaceId] || 'USD';
   }
 
   getAccessToken() {
@@ -151,7 +171,7 @@ class SpApiClient {
 
   fetchCatalogItem(asin) {
     const accessToken = this.getAccessToken();
-    const endpoint = `https://sellingpartnerapi-na.amazon.com/catalog/2022-04-01/items/${asin}`;
+    const endpoint = `${this.endpoint}/catalog/2022-04-01/items/${asin}`;
 
     const params = [
       `marketplaceIds=${this.marketplaceId}`,
@@ -180,16 +200,14 @@ class SpApiClient {
 
   fetchFeesEstimate(asin, price) {
     const accessToken = this.getAccessToken();
-    const endpoint = 'https://sellingpartnerapi-na.amazon.com/products/fees/v0/items/asin/feesEstimate';
-
-    const url = endpoint.replace('asin', asin);
+    const url = `${this.endpoint}/products/fees/v0/items/${asin}/feesEstimate`;
 
     const payload = {
       FeesEstimateRequest: {
         MarketplaceId: this.marketplaceId,
         PriceToEstimateFees: {
           ListingPrice: {
-            CurrencyCode: 'USD',
+            CurrencyCode: this.currency,
             Amount: price
           }
         },
@@ -365,8 +383,8 @@ function fetchAndWriteToSheet(asinColumnName) {
     refreshToken: PropertiesService.getScriptProperties().getProperty('SP_API_REFRESH_TOKEN'),
     clientId: PropertiesService.getScriptProperties().getProperty('SP_API_CLIENT_ID'),
     clientSecret: PropertiesService.getScriptProperties().getProperty('SP_API_CLIENT_SECRET'),
-    region: 'us-east-1',
-    marketplaceId: 'ATVPDKIKX0DER'
+    region: 'us-west-2',
+    marketplaceId: 'A1VC38T7YXB528'
   };
 
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
