@@ -33,7 +33,7 @@ class KeepaClient {
   }
 
   fetchProductData(asin) {
-    const url = `${this.baseUrl}/product?key=${this.apiKey}&domain=5&asin=${asin}`;
+    const url = `${this.baseUrl}/product?key=${this.apiKey}&domain=5&asin=${asin}&stats=1`;
 
     const options = {
       method: 'get',
@@ -52,6 +52,12 @@ class KeepaClient {
     if (!data.products || data.products.length === 0) {
       throw new Error(`Product not found: ${asin}`);
     }
+
+    Logger.log('=== Keepa API レスポンス（販売数関連） ===');
+    const product = data.products[0];
+    Logger.log(`monthlySold: ${product.monthlySold}`);
+    Logger.log(`stats: ${JSON.stringify(product.stats)}`);
+    Logger.log(`salesRanks: ${JSON.stringify(product.salesRanks)}`);
 
     return data.products[0];
   }
@@ -291,9 +297,13 @@ class ProductInfoFetcher {
 
     let buyBoxPrice = estimatedPrice;
 
+    Logger.log('=== Keepa API 呼び出し開始 ===');
     try {
       const keepaData = this.keepaClient.fetchProductData(asin);
+      Logger.log('Keepa API からのデータ取得成功');
+
       const keepaInfo = this.keepaClient.extractProductInfo(keepaData);
+      Logger.log(`抽出した情報: ${JSON.stringify(keepaInfo)}`);
 
       productData.title = keepaInfo.title || productData.title;
       productData.imageUrl = keepaInfo.imageUrl || productData.imageUrl;
@@ -304,9 +314,13 @@ class ProductInfoFetcher {
       if (keepaInfo.buyBoxPrice !== null) {
         buyBoxPrice = keepaInfo.buyBoxPrice;
         productData.buyBoxPrice = keepaInfo.buyBoxPrice;
+        Logger.log(`カート価格取得: ${keepaInfo.buyBoxPrice}`);
+      } else {
+        Logger.log('カート価格がnullです');
       }
     } catch (error) {
       Logger.log(`Keepa API error for ${asin}: ${error.message}`);
+      Logger.log(`エラー詳細: ${error.stack}`);
     }
 
     try {
@@ -401,13 +415,22 @@ function fetchAndWriteToSheet(asinColumnName) {
   }
 
   Logger.log(`ASIN列名: "${asinColumnName}"`);
-  const asin = row.get(asinColumnName);
+  const rawAsin = row.get(asinColumnName);
 
-  Logger.log(`ASIN列の値: "${asin}"`);
-  Logger.log(`ASIN列の値の型: ${typeof asin}`);
+  Logger.log(`ASIN列の値（生データ）: "${rawAsin}"`);
+  Logger.log(`ASIN列の値の型: ${typeof rawAsin}`);
+
+  if (!rawAsin || rawAsin === '') {
+    Logger.log('ASIN が空です。');
+    return;
+  }
+
+  const asin = String(rawAsin).trim().replace(/[^A-Z0-9]/gi, '').substring(0, 10);
+
+  Logger.log(`クリーニング後のASIN: "${asin}"`);
 
   if (!asin || asin === '') {
-    Logger.log('ASIN が空です。');
+    Logger.log('ASINをクリーニングした結果、空になりました。');
     return;
   }
 
