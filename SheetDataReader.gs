@@ -88,7 +88,22 @@ class SheetDataReader {
       const dataStartRow = this.headerRow + 1;
       const dataValues = sheet.getRange(dataStartRow, 1, lastRow - this.headerRow, lastColumn).getValues();
 
-      this.rows = dataValues.map(rowData => new SheetRow(this.headers, rowData));
+      // データ行が結合セルで空の場合、ヘッダ行の1つ上の行からもフォールバック
+      let fallbackRowData = null;
+      if (this.headerRow > 1) {
+        fallbackRowData = sheet.getRange(this.headerRow - 1, 1, 1, lastColumn).getValues()[0];
+      }
+
+      this.rows = dataValues.map(rowData => {
+        // 各セルが空の場合、フォールバック行から取得
+        const mergedRowData = rowData.map((cell, index) => {
+          if ((cell === '' || cell === null || cell === undefined) && fallbackRowData) {
+            return fallbackRowData[index] || '';
+          }
+          return cell;
+        });
+        return new SheetRow(this.headers, mergedRowData);
+      });
     }
   }
   
