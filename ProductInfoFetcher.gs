@@ -426,9 +426,14 @@ function fetchAndWriteToSheet(asinColumnName) {
     Logger.log(`販売手数料: ${productInfo.salesCommission}`);
     Logger.log(`配送代行手数料: ${productInfo.fbaFee}`);
 
+    const amazonUrl = `https://www.amazon.co.jp/dp/${asin}`;
+    const imageFormula = productInfo.imageUrl
+      ? `=HYPERLINK("${amazonUrl}", IMAGE("${productInfo.imageUrl}"))`
+      : '';
+
     const updateData = {
       '商品名': productInfo.title,
-      '画像URL': productInfo.imageUrl,
+      '画像URL': imageFormula,
       '発売日': productInfo.releaseDate,
       'カート価格': productInfo.buyBoxPrice,
       'サイズ(長さ)': productInfo.size.length || '',
