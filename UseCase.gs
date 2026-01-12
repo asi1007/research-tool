@@ -62,9 +62,7 @@ function usecaseProductInfoFetcher() {
   const spApiConfig = {
     refreshToken: PropertiesService.getScriptProperties().getProperty('SP_API_REFRESH_TOKEN'),
     clientId: PropertiesService.getScriptProperties().getProperty('SP_API_CLIENT_ID'),
-    clientSecret: PropertiesService.getScriptProperties().getProperty('SP_API_CLIENT_SECRET'),
-    region: 'us-east-1',
-    marketplaceId: 'ATVPDKIKX0DER'
+    clientSecret: PropertiesService.getScriptProperties().getProperty('SP_API_CLIENT_SECRET')
   };
 
   const fetcher = new ProductInfoFetcher(keepaApiKey, spApiConfig);

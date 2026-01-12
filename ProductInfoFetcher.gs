@@ -107,30 +107,11 @@ class SpApiClient {
     this.refreshToken = config.refreshToken;
     this.clientId = config.clientId;
     this.clientSecret = config.clientSecret;
-    this.region = config.region || 'us-east-1';
-    this.marketplaceId = config.marketplaceId || 'ATVPDKIKX0DER';
+    this.marketplaceId = 'A1VC38T7YXB528';
     this.accessToken = null;
     this.tokenExpiry = null;
-    this.endpoint = this.getEndpoint();
-    this.currency = this.getCurrency();
-  }
-
-  getEndpoint() {
-    const endpointMap = {
-      'us-east-1': 'https://sellingpartnerapi-na.amazon.com',
-      'eu-west-1': 'https://sellingpartnerapi-eu.amazon.com',
-      'us-west-2': 'https://sellingpartnerapi-fe.amazon.com'
-    };
-    return endpointMap[this.region] || endpointMap['us-east-1'];
-  }
-
-  getCurrency() {
-    const currencyMap = {
-      'ATVPDKIKX0DER': 'USD',
-      'A1F83G8C2ARO7P': 'GBP',
-      'A1VC38T7YXB528': 'JPY'
-    };
-    return currencyMap[this.marketplaceId] || 'USD';
+    this.endpoint = 'https://sellingpartnerapi-fe.amazon.com';
+    this.currency = 'JPY';
   }
 
   getAccessToken() {
@@ -382,9 +363,7 @@ function fetchAndWriteToSheet(asinColumnName) {
   const spApiConfig = {
     refreshToken: PropertiesService.getScriptProperties().getProperty('SP_API_REFRESH_TOKEN'),
     clientId: PropertiesService.getScriptProperties().getProperty('SP_API_CLIENT_ID'),
-    clientSecret: PropertiesService.getScriptProperties().getProperty('SP_API_CLIENT_SECRET'),
-    region: 'us-west-2',
-    marketplaceId: 'A1VC38T7YXB528'
+    clientSecret: PropertiesService.getScriptProperties().getProperty('SP_API_CLIENT_SECRET')
   };
 
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
