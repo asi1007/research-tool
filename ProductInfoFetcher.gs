@@ -28,6 +28,32 @@ class ProductInfo {
   }
 }
 
+class InternationalShippingCalculator {
+  constructor(ratePerKgCny, cnyToJpyRate) {
+    this.ratePerKgCny = ratePerKgCny;
+    this.cnyToJpyRate = cnyToJpyRate;
+  }
+
+  static fetchCnyToJpyRate() {
+    const url = 'https://open.er-api.com/v6/latest/CNY';
+    const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    if (response.getResponseCode() !== 200) {
+      Logger.log('為替レート取得失敗、デフォルト値 21.0 を使用');
+      return 21.0;
+    }
+    const data = JSON.parse(response.getContentText());
+    return data.rates.JPY || 21.0;
+  }
+
+  calculate(lengthMm, widthMm, heightMm, weightGrams) {
+    const volumetricWeightKg = (lengthMm / 10) * (widthMm / 10) * (heightMm / 10) / 5000;
+    const actualWeightKg = weightGrams / 1000;
+    const chargeableWeightKg = Math.max(volumetricWeightKg, actualWeightKg);
+    const shippingCostCny = chargeableWeightKg * this.ratePerKgCny;
+    return Math.round(shippingCostCny * this.cnyToJpyRate);
+  }
+}
+
 class KeepaClient {
   constructor(apiKey) {
     this.apiKey = apiKey;
@@ -267,10 +293,19 @@ class SpApiClient {
 
     const packageDimension = dimensions.find(d => d.type === 'package') || {};
 
+    // 発売日の取得: street_date -> product_site_launch_date の順で試行
+    let releaseDate = '';
+    if (attributes.street_date?.[0]?.value) {
+      // ISO 8601形式（例: "2019-03-11T08:00:01.000Z"）をYYYY-MM-DD形式に変換
+      releaseDate = attributes.street_date[0].value.split('T')[0];
+    } else if (attributes.product_site_launch_date?.[0]?.value) {
+      releaseDate = attributes.product_site_launch_date[0].value.split('T')[0];
+    }
+
     return {
       title: attributes.item_name?.[0]?.value || '',
       imageUrl: images[0]?.images?.[0]?.link || '',
-      releaseDate: attributes.release_date?.[0]?.value || '',
+      releaseDate: releaseDate,
       size: {
         length: packageDimension.length?.value || 0,
         width: packageDimension.width?.value || 0,
@@ -283,16 +318,18 @@ class SpApiClient {
   }
 
   extractFeesInfo(feesData) {
-    const feesEstimate = feesData.payload?.FeesEstimate;
+    const feesEstimateResult = feesData.payload?.FeesEstimateResult;
 
-    if (!feesEstimate) {
+    if (!feesEstimateResult || feesEstimateResult.Status !== 'Success') {
+      Logger.log('Fees estimate failed or not available');
       return {
         salesCommission: 0,
         fbaFee: 0
       };
     }
 
-    const feeDetails = feesEstimate.FeeDetailList || [];
+    const feesEstimate = feesEstimateResult.FeesEstimate;
+    const feeDetails = feesEstimate?.FeeDetailList || [];
 
     let salesCommission = 0;
     let fbaFee = 0;
@@ -376,13 +413,20 @@ class ProductInfoFetcher {
 
     if (buyBoxPrice !== null && buyBoxPrice > 0) {
       try {
+        Logger.log(`=== SP-API Fees APIリクエスト ===`);
+        Logger.log(`ASIN: ${asin}, 価格: ${buyBoxPrice}`);
+
         const feesData = this.spApiClient.fetchFeesEstimate(asin, buyBoxPrice);
+        Logger.log(`Fees APIレスポンス: ${JSON.stringify(feesData)}`);
+
         const feesInfo = this.spApiClient.extractFeesInfo(feesData);
+        Logger.log(`抽出した手数料: 販売手数料=${feesInfo.salesCommission}, FBA手数料=${feesInfo.fbaFee}`);
 
         productData.salesCommission = feesInfo.salesCommission;
         productData.fbaFee = feesInfo.fbaFee;
       } catch (error) {
         Logger.log(`SP-API fees error for ${asin}: ${error.message}`);
+        Logger.log(`エラー詳細: ${error.stack}`);
       }
     } else {
       Logger.log(`No buy box price available for ${asin}, skipping fees calculation`);
@@ -419,7 +463,7 @@ function fetchAndWriteToSheet(asinColumnName) {
   };
 
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  const activeRow = sheet.getActiveCell().getRow();
+  const activeRange = sheet.getActiveRange();
   const spreadsheetUrl = SpreadsheetApp.getActiveSpreadsheet().getUrl();
   const sheetName = sheet.getName();
 
@@ -428,6 +472,10 @@ function fetchAndWriteToSheet(asinColumnName) {
 
   const fetcher = new ProductInfoFetcher(keepaApiKey, spApiConfig);
 
+  const cnyToJpyRate = InternationalShippingCalculator.fetchCnyToJpyRate();
+  Logger.log(`CNY→JPY 為替レート: ${cnyToJpyRate}`);
+  const shippingCalculator = new InternationalShippingCalculator(7, cnyToJpyRate);
+
   const headerRow = reader.headerRow;
   const headers = reader.getHeaders();
 
@@ -435,103 +483,113 @@ function fetchAndWriteToSheet(asinColumnName) {
   Logger.log(`ヘッダー行: ${headerRow}`);
   Logger.log(`ヘッダー一覧: ${headers.join(', ')}`);
 
-  if (activeRow <= headerRow) {
-    Logger.log('ヘッダ行が選択されています。データ行を選択してください。');
-    return;
-  }
+  // 選択範囲から処理対象の行を取得
+  const startRow = activeRange.getRow();
+  const numRows = activeRange.getNumRows();
+  const targetRows = [];
 
-  Logger.log(`アクティブ行: ${activeRow}`);
-
-  const row = reader.loadRow(activeRow);
-
-  Logger.log(`row存在チェック: ${row ? 'あり' : 'なし'}`);
-  Logger.log(`row data: ${JSON.stringify(row ? row.toObject() : null)}`);
-
-  if (!row) {
-    Logger.log('選択された行にデータが存在しません。');
-    return;
-  }
-
-  Logger.log(`ASIN列名: "${asinColumnName}"`);
-  const rawAsin = row.get(asinColumnName);
-
-  Logger.log(`ASIN列の値（生データ）: "${rawAsin}"`);
-  Logger.log(`ASIN列の値の型: ${typeof rawAsin}`);
-
-  if (!rawAsin || rawAsin === '') {
-    Logger.log('ASIN が空です。');
-    return;
-  }
-
-  const asin = String(rawAsin).trim().replace(/[^A-Z0-9]/gi, '').substring(0, 10);
-
-  Logger.log(`クリーニング後のASIN: "${asin}"`);
-
-  if (!asin || asin === '') {
-    Logger.log('ASINをクリーニングした結果、空になりました。');
-    return;
-  }
-
-  try {
-    Logger.log(`ASIN ${asin} の情報を取得中...`);
-
-    const productInfo = fetcher.fetchProductInfo(asin);
-
-    Logger.log('=== 取得した商品情報 ===');
-    Logger.log(`商品名: ${productInfo.title}`);
-    Logger.log(`画像URL: ${productInfo.imageUrl}`);
-    Logger.log(`発売日: ${productInfo.releaseDate}`);
-    Logger.log(`カート価格: ${productInfo.buyBoxPrice}`);
-    Logger.log(`サイズ: ${JSON.stringify(productInfo.size)}`);
-    Logger.log(`重量: ${productInfo.weight}`);
-    Logger.log(`販売手数料: ${productInfo.salesCommission}`);
-    Logger.log(`配送代行手数料: ${productInfo.fbaFee}`);
-    Logger.log(`月間販売数: ${productInfo.monthlySold}`);
-
-    const amazonUrl = `https://www.amazon.co.jp/dp/${asin}`;
-    let imageFormula = '';
-    if (productInfo.imageUrl) {
-      // 画像URLが完全なURLでない場合（ファイル名のみの場合）、Amazon画像URLを構築
-      const fullImageUrl = productInfo.imageUrl.startsWith('http')
-        ? productInfo.imageUrl
-        : `https://m.media-amazon.com/images/I/${productInfo.imageUrl}`;
-      imageFormula = `=HYPERLINK("${amazonUrl}", IMAGE("${fullImageUrl}"))`;
+  for (let i = 0; i < numRows; i++) {
+    const rowNumber = startRow + i;
+    if (rowNumber > headerRow) {
+      targetRows.push(rowNumber);
     }
-
-    const allUpdateData = {
-      '商品名': productInfo.title,
-      '画像URL': imageFormula,
-      '発売日': productInfo.releaseDate,
-      'カート価格': productInfo.buyBoxPrice,
-      '数量': productInfo.monthlySold,
-      'サイズ（長さ）': productInfo.size.length || '',
-      'サイズ(幅)': productInfo.size.width || '',
-      ' サイズ(高さ)': productInfo.size.height || '',
-      '重量': productInfo.weight,
-      '販売手数料': productInfo.salesCommission,
-      '配送代行手数料（FBA手数料）': productInfo.fbaFee,
-      '販売数/FBA数': productInfo.monthlySold
-    };
-
-    // 存在するヘッダのみに絞り込み
-    const updateData = {};
-    Object.keys(allUpdateData).forEach(headerName => {
-      if (headers.includes(headerName)) {
-        updateData[headerName] = allUpdateData[headerName];
-      } else {
-        Logger.log(`ヘッダ "${headerName}" が存在しないためスキップします`);
-      }
-    });
-
-    Logger.log('=== 書き込むデータ ===');
-    Logger.log(JSON.stringify(updateData, null, 2));
-
-    reader.updateRowByNumber(activeRow, updateData);
-
-    Logger.log(`更新完了 - ${productInfo.title} (カート価格: $${productInfo.buyBoxPrice})`);
-
-  } catch (error) {
-    Logger.log(`エラー: ${error.message}`);
   }
+
+  if (targetRows.length === 0) {
+    Logger.log('ヘッダ行のみが選択されています。データ行を選択してください。');
+    return;
+  }
+
+  Logger.log(`処理対象行数: ${targetRows.length}`);
+  Logger.log(`対象行: ${targetRows.join(', ')}`);
+
+  // 各行を処理
+  targetRows.forEach((rowNumber, index) => {
+    Logger.log(`\n=== 行 ${rowNumber} の処理開始 (${index + 1}/${targetRows.length}) ===`);
+
+    try {
+      const row = reader.loadRow(rowNumber);
+
+      if (!row) {
+        Logger.log(`行 ${rowNumber}: データが存在しません。スキップします。`);
+        return;
+      }
+
+      const rawAsin = row.get(asinColumnName);
+
+      if (!rawAsin || rawAsin === '') {
+        Logger.log(`行 ${rowNumber}: ASIN が空です。スキップします。`);
+        return;
+      }
+
+      const asin = String(rawAsin).trim().replace(/[^A-Z0-9]/gi, '').substring(0, 10);
+
+      if (!asin || asin === '') {
+        Logger.log(`行 ${rowNumber}: ASINをクリーニングした結果、空になりました。スキップします。`);
+        return;
+      }
+
+      Logger.log(`行 ${rowNumber}: ASIN ${asin} の情報を取得中...`);
+
+      const productInfo = fetcher.fetchProductInfo(asin);
+
+      Logger.log(`行 ${rowNumber}: 商品名: ${productInfo.title}`);
+      Logger.log(`行 ${rowNumber}: カート価格: ${productInfo.buyBoxPrice}`);
+
+      const amazonUrl = `https://www.amazon.co.jp/dp/${asin}`;
+      let imageFormula = '';
+      if (productInfo.imageUrl) {
+        const fullImageUrl = productInfo.imageUrl.startsWith('http')
+          ? productInfo.imageUrl
+          : `https://m.media-amazon.com/images/I/${productInfo.imageUrl}`;
+        imageFormula = `=HYPERLINK("${amazonUrl}", IMAGE("${fullImageUrl}"))`;
+      }
+
+      const allUpdateData = {
+        '商品名': productInfo.title,
+        '画像URL': imageFormula,
+        '発売日': productInfo.releaseDate,
+        'カート価格': productInfo.buyBoxPrice,
+        '数量': productInfo.monthlySold,
+        'サイズ（長さ）': productInfo.size.length || '',
+        'サイズ(幅)': productInfo.size.width || '',
+        ' サイズ(高さ)': productInfo.size.height || '',
+        '重量': productInfo.weight,
+        '販売手数料': productInfo.salesCommission,
+        '配送代行手数料（FBA手数料）': productInfo.fbaFee,
+        '販売数/FBA数': productInfo.monthlySold,
+        '国際送料': shippingCalculator.calculate(
+          productInfo.size.length || 0,
+          productInfo.size.width || 0,
+          productInfo.size.height || 0,
+          productInfo.weight || 0
+        )
+      };
+
+      // 存在するヘッダのみに絞り込み
+      const updateData = {};
+      Object.keys(allUpdateData).forEach(headerName => {
+        if (headers.includes(headerName)) {
+          updateData[headerName] = allUpdateData[headerName];
+        }
+      });
+
+      reader.updateRowByNumber(rowNumber, updateData);
+
+      Logger.log(`行 ${rowNumber}: 更新完了 - ${productInfo.title}`);
+
+      // API制限を考慮して待機（最後の行以外）
+      if (index < targetRows.length - 1) {
+        Logger.log('API制限を考慮して1秒待機...');
+        Utilities.sleep(1000);
+      }
+
+    } catch (error) {
+      Logger.log(`行 ${rowNumber}: エラー - ${error.message}`);
+    }
+  });
+
+  Logger.log(`\n=== 処理完了 ===`);
+  Logger.log(`処理した行数: ${targetRows.length}`);
 }
 

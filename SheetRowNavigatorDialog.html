@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <style>
+      body { font-family: Arial, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; padding: 12px; }
+      .row { margin: 10px 0; }
+      label { display: inline-block; width: 120px; }
+      select { width: 240px; }
+      .hint { color: #555; font-size: 12px; margin-top: 8px; }
+      .actions { margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end; }
+      button { padding: 8px 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <label>移動先シート</label>
+      <select id="sheetSelect"></select>
+    </div>
+
+    <div class="row hint" id="info"></div>
+
+    <div class="actions">
+      <button onclick="google.script.host.close()">キャンセル</button>
+      <button id="goBtn" onclick="go()" disabled>移動</button>
+    </div>
+
+    <script>
+      // サーバー側で作成したモデルをテンプレートで埋め込み（初期化のgoogle.script.runを廃止）
+      const model = <?!= JSON.stringify(model) ?>;
+
+      function render(m) {
+        const select = document.getElementById('sheetSelect');
+        select.innerHTML = '';
+
+        if (m && m.error) {
+          document.getElementById('info').textContent = m.error;
+          document.getElementById('goBtn').disabled = true;
+          return;
+        }
+
+        (m.sheetNames || []).forEach(function(name) {
+          const opt = document.createElement('option');
+          opt.value = name;
+          opt.textContent = name;
+          select.appendChild(opt);
+        });
+
+        if (!m.sheetNames || m.sheetNames.length === 0) {
+          document.getElementById('info').textContent =
+            '移動できるシートがありません（非表示シート・現在シートは候補から除外しています）';
+          document.getElementById('goBtn').disabled = true;
+          return;
+        }
+
+        document.getElementById('info').textContent =
+          '移動元: ' + m.currentSheetName + ' / ' + m.row + '行（選択したシートの最下部へ移動します）';
+
+        document.getElementById('goBtn').disabled = false;
+      }
+
+      function go() {
+        const target = document.getElementById('sheetSelect').value;
+        if (!model) return;
+
+        document.getElementById('goBtn').disabled = true;
+
+        google.script.run
+          .withSuccessHandler(function(res) {
+            if (res && res.ok) {
+              google.script.host.close();
+              return;
+            }
+            document.getElementById('goBtn').disabled = false;
+            const msg = (res && res.message) ? res.message : '不明なエラー';
+            const stack = (res && res.stack) ? ('\n\n' + res.stack) : '';
+            const trace = (res && res.traceId) ? ('\n\ntraceId: ' + res.traceId + '（実行ログで検索してください）') : '';
+            document.getElementById('info').textContent = '移動に失敗しました: ' + msg + stack + trace;
+          })
+          .withFailureHandler(function(err) {
+            document.getElementById('goBtn').disabled = false;
+            const msg = (err && err.message) ? err.message : String(err);
+            let detail = '';
+            try { detail = '\n\n' + JSON.stringify(err); } catch (e) {}
+            document.getElementById('info').textContent =
+              '移動に失敗しました: ' + msg + detail + '\n\n（Apps Script の「実行」一覧にも失敗が出ているはずなので、最新の失敗を開いて詳細も確認してください）';
+          })
+          .moveActiveRowToBottomOfSheet(target, model.sourceSheetName, model.row);
+      }
+
+      render(model);
+    </script>
+  </body>
+</html>
+
