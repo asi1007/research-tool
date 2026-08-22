@@ -1,0 +1,9 @@
+**/node_modules/**
+**/.venv/**
+**/__pycache__/**
+**/.pytest_cache/**
+src/**
+*.py
+.git/**
+.env*
+service_account*.json
