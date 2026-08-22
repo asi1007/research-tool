@@ -102,7 +102,7 @@ class KeepaClient {
     return {
       asin: product.asin || '',
       title: product.title || '',
-      imageUrl: product.imagesCSV ? product.imagesCSV.split(',')[0] : '',
+      imageUrl: this.extractMainImageFileName(product),
       releaseDate: releaseDate,
       size: {
         length: product.packageLength || 0,
@@ -113,6 +113,18 @@ class KeepaClient {
       buyBoxPrice: this.extractBuyBoxPrice(product),
       monthlySold: product.monthlySold || 0
     };
+  }
+
+  extractMainImageFileName(product) {
+    const images = product.images || [];
+    const mainImage = images.find(image => image.variant === 'MAIN') || images[0];
+
+    if (mainImage && mainImage.l) {
+      return mainImage.l;
+    }
+
+    // 旧レスポンス形式（imagesCSV）へのフォールバック
+    return product.imagesCSV ? product.imagesCSV.split(',')[0] : '';
   }
 
   convertReleaseDateFormat(dateValue) {
@@ -168,6 +180,45 @@ class KeepaClient {
     const timestamp = keepaEpoch + (keepaMinutes * 60 * 1000);
     return new Date(timestamp).toISOString().split('T')[0];
   }
+}
+
+function testKeepaMainImage() {
+  const client = new KeepaClient('dummy');
+
+  const cases = [
+    [
+      'variantがMAINの大サイズ画像を選ぶ',
+      { images: [
+        { l: '61lKIGifGxL.jpg', variant: 'PT01' },
+        { l: '61oQj2FPnjL.jpg', m: '31ighfPhoIL.jpg', variant: 'MAIN' }
+      ] },
+      '61oQj2FPnjL.jpg'
+    ],
+    [
+      'MAINが無ければ先頭の画像を使う',
+      { images: [{ l: '71RCFDW42qL.jpg', variant: 'PT01' }] },
+      '71RCFDW42qL.jpg'
+    ],
+    [
+      '旧形式のimagesCSVにもフォールバックする',
+      { imagesCSV: '71RCFDW42qL.jpg,81abcdefgh.jpg' },
+      '71RCFDW42qL.jpg'
+    ],
+    ['imagesが空配列なら空文字', { images: [] }, ''],
+    ['画像情報が無ければ空文字', {}, '']
+  ];
+
+  let failed = 0;
+
+  cases.forEach(([name, product, expected]) => {
+    const actual = client.extractMainImageFileName(product);
+    if (actual !== expected) {
+      failed += 1;
+      Logger.log(`NG: ${name} = ${JSON.stringify(actual)} (期待値: ${JSON.stringify(expected)})`);
+    }
+  });
+
+  Logger.log(failed === 0 ? `OK: ${cases.length}件すべて成功` : `NG: ${failed}件失敗`);
 }
 
 class SpApiClient {
@@ -461,6 +512,93 @@ class ProductInfoFetcher {
   }
 }
 
+// 取得した値からは決まらず、既存行の数式をコピーして埋める列
+const FORMULA_HEADER_NAMES = ['利益', '利益率'];
+
+// 数式列のテンプレートとなる行（最初に数式が入っているデータ行）を探す
+function findTemplateRowOffset(formulaRows) {
+  for (let offset = 0; offset < formulaRows.length; offset++) {
+    if (formulaRows[offset][0] !== '') {
+      return offset;
+    }
+  }
+  return -1;
+}
+
+function findFormulaTemplates(sheet, headers, headerRow, formulaHeaderNames) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= headerRow) {
+    return [];
+  }
+
+  const templates = [];
+
+  formulaHeaderNames.forEach(headerName => {
+    const columnIndex = headers.indexOf(headerName);
+    if (columnIndex === -1) {
+      Logger.log(`数式列 "${headerName}" がシートに見つかりません`);
+      return;
+    }
+
+    const formulaRows = sheet
+      .getRange(headerRow + 1, columnIndex + 1, lastRow - headerRow, 1)
+      .getFormulas();
+    const offset = findTemplateRowOffset(formulaRows);
+
+    if (offset === -1) {
+      Logger.log(`数式列 "${headerName}" にコピー元となる数式がありません`);
+      return;
+    }
+
+    const templateRow = headerRow + 1 + offset;
+    Logger.log(`数式列 "${headerName}": ${templateRow}行目を雛形にする (${formulaRows[offset][0]})`);
+    templates.push({ headerName: headerName, columnIndex: columnIndex, templateRow: templateRow });
+  });
+
+  return templates;
+}
+
+// 相対参照は copyTo が行番号に合わせて調整するため、数式を組み立て直さない
+function copyFormulasToRow(sheet, templates, targetRow) {
+  const copied = [];
+
+  templates.forEach(template => {
+    if (template.templateRow === targetRow) {
+      return;
+    }
+
+    sheet.getRange(template.templateRow, template.columnIndex + 1).copyTo(
+      sheet.getRange(targetRow, template.columnIndex + 1),
+      SpreadsheetApp.CopyPasteType.PASTE_FORMULA,
+      false
+    );
+    copied.push(template.headerName);
+  });
+
+  return copied;
+}
+
+function testFindTemplateRowOffset() {
+  const cases = [
+    ['先頭行に数式がある', [['=A1'], [''], ['']], 0],
+    ['途中の行に数式がある', [[''], [''], ['=AA6-AH6'], ['']], 2],
+    ['数式が一つも無い', [[''], ['']], -1],
+    ['空配列', [], -1]
+  ];
+
+  let failed = 0;
+
+  cases.forEach(([name, formulaRows, expected]) => {
+    const actual = findTemplateRowOffset(formulaRows);
+    if (actual !== expected) {
+      failed += 1;
+      Logger.log(`NG: ${name} = ${actual} (期待値: ${expected})`);
+    }
+  });
+
+  Logger.log(failed === 0 ? `OK: ${cases.length}件すべて成功` : `NG: ${failed}件失敗`);
+}
+
 function fetchAndWriteToSheet(asinColumnName) {
   const keepaApiKey = PropertiesService.getScriptProperties().getProperty('KEEPA_API_KEY');
 
@@ -490,6 +628,10 @@ function fetchAndWriteToSheet(asinColumnName) {
   Logger.log('=== ヘッダー情報 ===');
   Logger.log(`ヘッダー行: ${headerRow}`);
   Logger.log(`ヘッダー一覧: ${headers.join(', ')}`);
+  // 不可視の空白・改行を可視化する（完全一致に失敗する原因の切り分け用）
+  Logger.log(`ヘッダー生データ: ${JSON.stringify(headers)}`);
+
+  const formulaTemplates = findFormulaTemplates(reader.sheet, headers, headerRow, FORMULA_HEADER_NAMES);
 
   // 選択範囲から処理対象の行を取得
   const startRow = activeRange.getRow();
@@ -545,6 +687,8 @@ function fetchAndWriteToSheet(asinColumnName) {
       Logger.log(`行 ${rowNumber}: カート価格: ${productInfo.buyBoxPrice}`);
 
       const amazonUrl = asin.amazonUrl;
+      Logger.log(`行 ${rowNumber}: imageUrl(生) = ${JSON.stringify(productInfo.imageUrl)}`);
+
       let imageFormula = '';
       if (productInfo.imageUrl) {
         const fullImageUrl = productInfo.imageUrl.startsWith('http')
@@ -552,6 +696,7 @@ function fetchAndWriteToSheet(asinColumnName) {
           : `https://m.media-amazon.com/images/I/${productInfo.imageUrl}`;
         imageFormula = `=HYPERLINK("${amazonUrl}", IMAGE("${fullImageUrl}"))`;
       }
+      Logger.log(`行 ${rowNumber}: imageFormula = ${JSON.stringify(imageFormula)}`);
 
       const allUpdateData = {
         '商品名': productInfo.title,
@@ -576,13 +721,25 @@ function fetchAndWriteToSheet(asinColumnName) {
 
       // 存在するヘッダのみに絞り込み
       const updateData = {};
+      const droppedHeaders = [];
       Object.keys(allUpdateData).forEach(headerName => {
         if (headers.includes(headerName)) {
           updateData[headerName] = allUpdateData[headerName];
+        } else {
+          droppedHeaders.push(headerName);
         }
       });
 
+      if (droppedHeaders.length > 0) {
+        Logger.log(`行 ${rowNumber}: シートに無いため書き込まない列: ${JSON.stringify(droppedHeaders)}`);
+      }
+
       reader.updateRowByNumber(rowNumber, updateData);
+
+      const copiedFormulas = copyFormulasToRow(reader.sheet, formulaTemplates, rowNumber);
+      if (copiedFormulas.length > 0) {
+        Logger.log(`行 ${rowNumber}: 数式をコピー: ${JSON.stringify(copiedFormulas)}`);
+      }
 
       Logger.log(`行 ${rowNumber}: 更新完了 - ${productInfo.title}`);
 
