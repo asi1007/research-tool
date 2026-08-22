@@ -355,7 +355,15 @@ class ProductInfoFetcher {
     this.spApiClient = new SpApiClient(spApiConfig);
   }
 
-  fetchProductInfo(asin, estimatedPrice = null) {
+  fetchProductInfo(asinOrUrl, estimatedPrice = null) {
+    const parsedAsin = Asin.parse(asinOrUrl);
+
+    if (!parsedAsin) {
+      throw new Error(`ASIN として解釈できません: ${asinOrUrl}`);
+    }
+
+    const asin = parsedAsin.value;
+
     let productData = {
       asin: asin,
       title: '',
@@ -522,21 +530,21 @@ function fetchAndWriteToSheet(asinColumnName) {
         return;
       }
 
-      const asin = String(rawAsin).trim().replace(/[^A-Z0-9]/gi, '').substring(0, 10);
+      const asin = Asin.parse(rawAsin);
 
-      if (!asin || asin === '') {
-        Logger.log(`行 ${rowNumber}: ASINをクリーニングした結果、空になりました。スキップします。`);
+      if (!asin) {
+        Logger.log(`行 ${rowNumber}: ASIN として解釈できません（${rawAsin}）。スキップします。`);
         return;
       }
 
-      Logger.log(`行 ${rowNumber}: ASIN ${asin} の情報を取得中...`);
+      Logger.log(`行 ${rowNumber}: ASIN ${asin.value} の情報を取得中...`);
 
-      const productInfo = fetcher.fetchProductInfo(asin);
+      const productInfo = fetcher.fetchProductInfo(asin.value);
 
       Logger.log(`行 ${rowNumber}: 商品名: ${productInfo.title}`);
       Logger.log(`行 ${rowNumber}: カート価格: ${productInfo.buyBoxPrice}`);
 
-      const amazonUrl = `https://www.amazon.co.jp/dp/${asin}`;
+      const amazonUrl = asin.amazonUrl;
       let imageFormula = '';
       if (productInfo.imageUrl) {
         const fullImageUrl = productInfo.imageUrl.startsWith('http')
