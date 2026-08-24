@@ -1,3 +1,5 @@
+import pytest
+
 from src.infrastructure.column_codes import ColumnCodes
 from src.infrastructure.sheet_repository import SheetTable
 from src.usecases.select_supplier_targets import SupplierTarget, select_targets
@@ -9,6 +11,27 @@ IMAGE_B = '=HYPERLINK("https://www.amazon.co.jp/dp/B0CQ245KMT", IMAGE("https://m
 def build_values(data_rows: list[list]) -> list[list]:
     code_row = ["", "", "ASIN_SELL", "", "", "IMAGE", "LINK_LOWEST"]
     header2 = ["", "", "ASIN", "", "", "画像URL", "購入先"]
+    header3 = ["", "", "", "", "", "", ""]
+    return [code_row, header2, header3, *data_rows]
+
+
+def build_values_without_link_lowest(data_rows: list[list]) -> list[list]:
+    code_row = ["", "", "ASIN_SELL", "", "", "IMAGE"]
+    header2 = ["", "", "ASIN", "", "", "画像URL"]
+    header3 = ["", "", "", "", "", ""]
+    return [code_row, header2, header3, *data_rows]
+
+
+def build_values_without_image(data_rows: list[list]) -> list[list]:
+    code_row = ["", "", "ASIN_SELL", "", "", "LINK_LOWEST"]
+    header2 = ["", "", "ASIN", "", "", "購入先"]
+    header3 = ["", "", "", "", "", ""]
+    return [code_row, header2, header3, *data_rows]
+
+
+def build_values_without_asin(data_rows: list[list]) -> list[list]:
+    code_row = ["", "", "", "", "", "IMAGE", "LINK_LOWEST"]
+    header2 = ["", "", "", "", "", "画像URL", "購入先"]
     header3 = ["", "", "", "", "", "", ""]
     return [code_row, header2, header3, *data_rows]
 
@@ -46,4 +69,23 @@ class TestSelectTargets:
     def test_ASINが空の行も画像があれば選ぶ(self) -> None:
         values = build_values([["", "", "", "", "", IMAGE_A, ""]])
         targets = select_targets(SheetTable(values), ColumnCodes(values))
+        assert targets[0].asin == ""
+
+    def test_LINK_LOWESTコードが無い場合ValueError(self) -> None:
+        values = build_values_without_link_lowest([
+            ["", "", "B0CCX6ZXRV", "", "", IMAGE_A],
+            ["", "", "B0CQ245KMT", "", "", IMAGE_B],
+        ])
+        with pytest.raises(ValueError, match="LINK_LOWEST"):
+            select_targets(SheetTable(values), ColumnCodes(values))
+
+    def test_IMAGEコードが無い場合ValueError(self) -> None:
+        values = build_values_without_image([["", "", "B0CCX6ZXRV", "", "", "https://detail.1688.com/offer/1.html"]])
+        with pytest.raises(ValueError, match="IMAGE"):
+            select_targets(SheetTable(values), ColumnCodes(values))
+
+    def test_ASINコードが無くても例外にならない(self) -> None:
+        values = build_values_without_asin([["", "", "", "", "", IMAGE_A, ""]])
+        targets = select_targets(SheetTable(values), ColumnCodes(values))
+        assert len(targets) == 1
         assert targets[0].asin == ""

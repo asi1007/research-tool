@@ -29,6 +29,11 @@ def select_targets(
     image_index = codes.index_of("IMAGE")
     link_index = codes.index_of("LINK_LOWEST")
 
+    if link_index is None:
+        raise ValueError("1行目に列コードが見つかりません: LINK_LOWEST")
+    if image_index is None:
+        raise ValueError("1行目に列コードが見つかりません: IMAGE")
+
     targets: list[SupplierTarget] = []
 
     for data_index, row in enumerate(table.data_rows):
