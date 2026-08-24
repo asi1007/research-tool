@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from src.domain.entities.supplier_candidate import SupplierCandidate
 from src.domain.value_objects.offer_id import OfferId
 
@@ -10,7 +12,10 @@ def _to_price(raw: object) -> float | None:
     if raw is None or isinstance(raw, bool):
         return None
     try:
-        return float(str(raw).strip())
+        price = float(str(raw).strip())
+        if not math.isfinite(price):
+            return None
+        return price
     except ValueError:
         return None
 
@@ -28,6 +33,9 @@ def parse_candidates(
     for item in raw_items:
         if len(candidates) >= limit:
             break
+
+        if not isinstance(item, dict):
+            continue
 
         offer_id = OfferId.parse(item.get("offerId"))
         if offer_id is None or offer_id.value in seen:
