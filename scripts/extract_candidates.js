@@ -23,8 +23,19 @@
   function findPrice(element) {
     let node = element;
     for (let depth = 0; depth < 8 && node; depth++) {
-      const matched = (node.innerText || '').match(/¥\s*([\d.]+)/);
-      if (matched) return parseFloat(matched[1]);
+      const innerText = node.innerText || '';
+      const matches = innerText.match(/¥\s*[\d.]+/g);
+
+      if (matches) {
+        if (matches.length === 1) {
+          // 1回だけ出現 → このカード固有の価格
+          return parseFloat(innerText.match(/¥\s*([\d.]+)/)[1]);
+        } else if (matches.length >= 2) {
+          // 2回以上出現 → 複数カードにまたがった
+          return null;
+        }
+      }
+      // matches.length === 0 or no matches → continue traversing
       node = node.parentElement;
     }
     return null;
