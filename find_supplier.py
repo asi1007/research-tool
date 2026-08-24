@@ -32,6 +32,21 @@ def missing_write_codes(codes: ColumnCodes) -> list[str]:
     return [code for code in REQUIRED_WRITE_CODES if codes.index_of(code) is None]
 
 
+def read_cell(values: list[list], row_number: int, column_index: int) -> str | None:
+    row_position = row_number - 1
+    if row_position < 0 or row_position >= len(values):
+        return None
+    row = values[row_position]
+    if column_index >= len(row):
+        return None
+    return str(row[column_index])
+
+
+def is_link_lowest_blank(values: list[list], row_number: int, link_index: int) -> bool:
+    cell = read_cell(values, row_number, link_index)
+    return cell is not None and cell.strip() == ""
+
+
 def build_repository() -> GoogleSheetRepository:
     load_dotenv(PROJECT_ROOT / ".env")
     return GoogleSheetRepository(
@@ -66,6 +81,21 @@ def run_write(args: argparse.Namespace) -> int:
         logger.error(
             "1行目に列コードが見つかりません",
             extra={"context": {"missing_codes": missing}},
+        )
+        return 1
+
+    link_index = codes.index_of("LINK_LOWEST")
+    existing_link = read_cell(values, args.row, link_index)
+    if existing_link is None:
+        logger.error(
+            "対象行が見つからないため書き込みません",
+            extra={"context": {"row": args.row}},
+        )
+        return 1
+    if existing_link.strip() != "":
+        logger.error(
+            "対象行には既に購入先が入っているため書き込みません",
+            extra={"context": {"row": args.row, "existing_link_lowest": existing_link.strip()}},
         )
         return 1
 
