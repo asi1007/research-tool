@@ -137,6 +137,7 @@ class TestDescribeCandidates:
             company="雄尊磁铁厂",
             province="浙江",
             local_price=0.03,
+            quantity=1,
         )
         assert describe_candidates([candidate]) == [
             {

@@ -13,6 +13,7 @@ DEFAULT_LIMIT = 10
 class SupplierTarget:
     row_number: int
     asin: str
+    title: str
     image_url: str
 
 
@@ -26,6 +27,7 @@ def select_targets(
     table: SheetTable, codes: ColumnCodes, limit: int = DEFAULT_LIMIT
 ) -> list[SupplierTarget]:
     asin_index = codes.index_of("ASIN_SELL")
+    title_index = codes.index_of("TITLE_SELL")
     image_index = codes.index_of("IMAGE")
     link_index = codes.index_of("LINK_LOWEST")
 
@@ -50,6 +52,7 @@ def select_targets(
             SupplierTarget(
                 row_number=table.row_number(data_index),
                 asin=_cell(row, asin_index),
+                title=_cell(row, title_index),
                 image_url=image_url,
             )
         )

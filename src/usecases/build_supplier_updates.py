@@ -52,7 +52,10 @@ def build_updates(
         _put(updates, local_index, candidate.local_price)
 
         if local_index is not None:
-            formula = f"={column_letter(local_index)}{row_number}*{CNY_TO_JPY_RATE}"
+            formula = (
+                f"={column_letter(local_index)}{row_number}"
+                f"*{CNY_TO_JPY_RATE}*{candidate.quantity}"
+            )
             _put(updates, codes.index_of(slot.price), formula)
 
     return updates

@@ -28,13 +28,14 @@ def codes() -> ColumnCodes:
     return ColumnCodes([CODE_ROW, [], []])
 
 
-def candidate(offer: str, price: float | None) -> SupplierCandidate:
+def candidate(offer: str, price: float | None, quantity: int = 1) -> SupplierCandidate:
     return SupplierCandidate(
         offer_id=OfferId(offer),
         title="强力磁铁",
         company="雄尊磁铁厂",
         province="浙江",
         local_price=price,
+        quantity=quantity,
     )
 
 
@@ -43,7 +44,7 @@ class TestBuildUpdates:
         updates = build_updates(5, [candidate("620082943880", 0.03)], codes)
         assert updates[0] == "https://detail.1688.com/offer/620082943880.html"
         assert updates[2] == 0.03
-        assert updates[1] == "=C5*24"
+        assert updates[1] == "=C5*24*1"
 
     def test_2件目は通貨CHYを書く(self, codes: ColumnCodes) -> None:
         updates = build_updates(
@@ -52,7 +53,7 @@ class TestBuildUpdates:
         assert updates[4] == "https://detail.1688.com/offer/853573456382.html"
         assert updates[6] == "CHY"
         assert updates[7] == 0.05
-        assert updates[5] == "=H5*24"
+        assert updates[5] == "=H5*24*1"
 
     def test_3件目も通貨CHYを書く(self, codes: ColumnCodes) -> None:
         updates = build_updates(
@@ -61,7 +62,7 @@ class TestBuildUpdates:
         assert updates[9] == "https://detail.1688.com/offer/956382552398.html"
         assert updates[11] == "CHY"
         assert updates[12] == 0.09
-        assert updates[10] == "=M9*24"
+        assert updates[10] == "=M9*24*1"
 
     def test_直送送料には書かない(self, codes: ColumnCodes) -> None:
         updates = build_updates(
@@ -126,3 +127,20 @@ class TestBuildUpdates:
             codes,
         )
         assert len([v for v in updates.values() if str(v).startswith("https://")]) == 3
+
+    def test_数量が指定されていれば価格式に掛け合わせる(self, codes: ColumnCodes) -> None:
+        updates = build_updates(7, [candidate("620082943880", 0.03, quantity=50)], codes)
+        assert updates[1] == "=C7*24*50"
+
+    def test_候補ごとに数量が異なれば式もそれぞれ異なる(self, codes: ColumnCodes) -> None:
+        updates = build_updates(
+            5,
+            [candidate("1", 0.03, quantity=50), candidate("853573456382", 0.05, quantity=100)],
+            codes,
+        )
+        assert updates[1] == "=C5*24*50"
+        assert updates[5] == "=H5*24*100"
+
+    def test_数量が不明な場合は式にそのまま1が表示される(self, codes: ColumnCodes) -> None:
+        updates = build_updates(5, [candidate("620082943880", 0.03, quantity=1)], codes)
+        assert updates[1] == "=C5*24*1"

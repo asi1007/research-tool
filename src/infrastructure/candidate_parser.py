@@ -24,6 +24,20 @@ def _to_text(raw: object) -> str:
     return "" if raw is None else str(raw).strip()
 
 
+def _to_quantity(raw: object) -> int:
+    if raw is None or isinstance(raw, bool):
+        return 1
+    if isinstance(raw, int):
+        return raw if raw > 0 else 1
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text.isdigit():
+            return 1
+        value = int(text)
+        return value if value > 0 else 1
+    return 1
+
+
 def parse_candidates(
     raw_items: list[dict], limit: int = DEFAULT_LIMIT
 ) -> list[SupplierCandidate]:
@@ -49,6 +63,7 @@ def parse_candidates(
                 company=_to_text(item.get("company")),
                 province=_to_text(item.get("province")),
                 local_price=_to_price(item.get("price")),
+                quantity=_to_quantity(item.get("quantity")),
             )
         )
 

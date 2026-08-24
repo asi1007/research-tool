@@ -10,6 +10,7 @@ class TestSupplierCandidate:
             company="雄尊磁铁厂",
             province="浙江",
             local_price=0.03,
+            quantity=1,
         )
         assert candidate.url == "https://detail.1688.com/offer/620082943880.html"
 
@@ -20,6 +21,7 @@ class TestSupplierCandidate:
             company="丽嘉磁业工厂",
             province="广东",
             local_price=None,
+            quantity=1,
         )
         assert candidate.local_price is None
         assert candidate.url == "https://detail.1688.com/offer/853573456382.html"

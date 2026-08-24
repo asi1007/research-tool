@@ -12,6 +12,7 @@ class SupplierCandidate:
     company: str
     province: str
     local_price: float | None
+    quantity: int
 
     @property
     def url(self) -> str:
