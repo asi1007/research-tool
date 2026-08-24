@@ -24,12 +24,13 @@
     let node = element;
     for (let depth = 0; depth < 8 && node; depth++) {
       const innerText = node.innerText || '';
-      const matches = innerText.match(/¥\s*[\d.]+/g);
+      const matches = innerText.match(/¥\s*\d+(?:\s*\.\d+)?/g);
 
       if (matches) {
         if (matches.length === 1) {
           // 1回だけ出現 → このカード固有の価格
-          return parseFloat(innerText.match(/¥\s*([\d.]+)/)[1]);
+          const captured = innerText.match(/¥\s*(\d+(?:\s*\.\d+)?)/)[1];
+          return parseFloat(captured.replace(/\s/g, ''));
         } else if (matches.length >= 2) {
           // 2回以上出現 → 複数カードにまたがった
           return null;
