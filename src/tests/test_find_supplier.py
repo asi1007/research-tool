@@ -146,8 +146,20 @@ class TestDescribeCandidates:
                 "company": "雄尊磁铁厂",
                 "province": "浙江",
                 "local_price": 0.03,
+                "quantity": 1,
             }
         ]
+
+    def test_数量が1以外でもログへ含める(self) -> None:
+        candidate = SupplierCandidate(
+            offer_id=OfferId("853573456382"),
+            title="现货钕铁硼强力圆形10*2磁铁 300颗/袋",
+            company="丽嘉磁业工厂",
+            province="广东",
+            local_price=0.01,
+            quantity=300,
+        )
+        assert describe_candidates([candidate])[0]["quantity"] == 300
 
     def test_空リストなら空リスト(self) -> None:
         assert describe_candidates([]) == []

@@ -112,6 +112,7 @@ def describe_candidates(candidates: list[SupplierCandidate]) -> list[dict]:
             "company": candidate.company,
             "province": candidate.province,
             "local_price": candidate.local_price,
+            "quantity": candidate.quantity,
         }
         for candidate in candidates
     ]
