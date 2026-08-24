@@ -84,6 +84,22 @@ class TestBuildUpdates:
         assert 1 not in updates
         assert 2 not in updates
 
+    def test_2件目の価格が不明なら通貨も書かない(self, codes: ColumnCodes) -> None:
+        updates = build_updates(5, [candidate("1", 0.01), candidate("853573456382", None)], codes)
+        assert updates[4] == "https://detail.1688.com/offer/853573456382.html"
+        assert 5 not in updates
+        assert 6 not in updates
+        assert 7 not in updates
+
+    def test_3件目の価格が不明なら通貨も書かない(self, codes: ColumnCodes) -> None:
+        updates = build_updates(
+            5, [candidate("1", 0.01), candidate("2", 0.02), candidate("956382552398", None)], codes
+        )
+        assert updates[9] == "https://detail.1688.com/offer/956382552398.html"
+        assert 10 not in updates
+        assert 11 not in updates
+        assert 12 not in updates
+
     def test_4件目以降は無視する(self, codes: ColumnCodes) -> None:
         updates = build_updates(
             5,

@@ -42,11 +42,11 @@ def build_updates(
     for slot, candidate in zip(SLOTS, candidates):
         _put(updates, codes.index_of(slot.link), candidate.url)
 
-        if slot.currency:
-            _put(updates, codes.index_of(slot.currency), CURRENCY)
-
         if candidate.local_price is None:
             continue
+
+        if slot.currency:
+            _put(updates, codes.index_of(slot.currency), CURRENCY)
 
         local_index = codes.index_of(slot.local_price)
         _put(updates, local_index, candidate.local_price)
