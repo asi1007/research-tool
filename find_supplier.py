@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 from dataclasses import asdict
+from enum import Enum
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -42,9 +43,19 @@ def read_cell(values: list[list], row_number: int, column_index: int) -> str | N
     return str(row[column_index])
 
 
-def is_link_lowest_blank(values: list[list], row_number: int, link_index: int) -> bool:
+class LinkLowestState(Enum):
+    BLANK = "blank"
+    OCCUPIED = "occupied"
+    ROW_NOT_FOUND = "row_not_found"
+
+
+def link_lowest_state(values: list[list], row_number: int, link_index: int) -> LinkLowestState:
     cell = read_cell(values, row_number, link_index)
-    return cell is not None and cell.strip() == ""
+    if cell is None:
+        return LinkLowestState.ROW_NOT_FOUND
+    if cell.strip() == "":
+        return LinkLowestState.BLANK
+    return LinkLowestState.OCCUPIED
 
 
 def build_repository() -> GoogleSheetRepository:
@@ -85,14 +96,15 @@ def run_write(args: argparse.Namespace) -> int:
         return 1
 
     link_index = codes.index_of("LINK_LOWEST")
-    existing_link = read_cell(values, args.row, link_index)
-    if existing_link is None:
+    state = link_lowest_state(values, args.row, link_index)
+    if state is LinkLowestState.ROW_NOT_FOUND:
         logger.error(
             "対象行が見つからないため書き込みません",
             extra={"context": {"row": args.row}},
         )
         return 1
-    if existing_link.strip() != "":
+    if state is LinkLowestState.OCCUPIED:
+        existing_link = read_cell(values, args.row, link_index)
         logger.error(
             "対象行には既に購入先が入っているため書き込みません",
             extra={"context": {"row": args.row, "existing_link_lowest": existing_link.strip()}},
