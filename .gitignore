@@ -6,3 +6,5 @@ service_account*.json
 .pytest_cache/
 node_modules/
 logs/
+.claude/worktrees/
+.superpowers/
