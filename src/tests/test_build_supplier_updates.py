@@ -100,6 +100,25 @@ class TestBuildUpdates:
         assert 11 not in updates
         assert 12 not in updates
 
+    def test_価格が0なら価格と現地価格を書かずURLだけ書く(self, codes: ColumnCodes) -> None:
+        updates = build_updates(5, [candidate("620082943880", 0.0)], codes)
+        assert updates[0] == "https://detail.1688.com/offer/620082943880.html"
+        assert 1 not in updates
+        assert 2 not in updates
+
+    def test_2件目の価格が0なら通貨も書かない(self, codes: ColumnCodes) -> None:
+        updates = build_updates(5, [candidate("1", 0.01), candidate("853573456382", 0.0)], codes)
+        assert updates[4] == "https://detail.1688.com/offer/853573456382.html"
+        assert 5 not in updates
+        assert 6 not in updates
+        assert 7 not in updates
+
+    def test_価格が負なら価格と現地価格を書かずURLだけ書く(self, codes: ColumnCodes) -> None:
+        updates = build_updates(5, [candidate("620082943880", -0.01)], codes)
+        assert updates[0] == "https://detail.1688.com/offer/620082943880.html"
+        assert 1 not in updates
+        assert 2 not in updates
+
     def test_4件目以降は無視する(self, codes: ColumnCodes) -> None:
         updates = build_updates(
             5,

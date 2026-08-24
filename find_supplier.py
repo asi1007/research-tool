@@ -11,13 +11,18 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from src.domain.entities.supplier_candidate import SupplierCandidate
 from src.infrastructure.candidate_parser import parse_candidates
 from src.infrastructure.cell_highlighter import apply_highlight
 from src.infrastructure.column_codes import ColumnCodes
 from src.infrastructure.logging_config import configure_logging
-from src.infrastructure.sheet_repository import GoogleSheetRepository, SheetTable
+from src.infrastructure.sheet_repository import (
+    DEFAULT_HEADER_ROW,
+    GoogleSheetRepository,
+    SheetTable,
+)
 from src.usecases.build_supplier_updates import build_updates
-from src.usecases.select_supplier_targets import select_targets
+from src.usecases.select_supplier_targets import SupplierTarget, select_targets
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger(__name__)
@@ -31,6 +36,19 @@ REQUIRED_WRITE_CODES = (
 
 def missing_write_codes(codes: ColumnCodes) -> list[str]:
     return [code for code in REQUIRED_WRITE_CODES if codes.index_of(code) is None]
+
+
+def reverse_write_codes(codes: ColumnCodes) -> dict[int, str]:
+    return {
+        index: code
+        for code in REQUIRED_WRITE_CODES
+        if (index := codes.index_of(code)) is not None
+    }
+
+
+def column_code_names(codes: ColumnCodes, indexes: list[int]) -> list[str]:
+    reverse = reverse_write_codes(codes)
+    return [reverse.get(index, str(index)) for index in sorted(indexes)]
 
 
 def read_cell(values: list[list], row_number: int, column_index: int) -> str | None:
@@ -58,6 +76,79 @@ def link_lowest_state(values: list[list], row_number: int, link_index: int) -> L
     return LinkLowestState.OCCUPIED
 
 
+def header_row_error(row: int, header_row: int) -> str | None:
+    if row > header_row:
+        return None
+    return f"--row はヘッダー行({header_row}行目以下)を指定できません"
+
+
+def parse_candidates_payload(text: str) -> list:
+    raw = json.loads(text)
+    if not isinstance(raw, list):
+        raise ValueError(f"候補データがリストではありません(type={type(raw).__name__})")
+    return raw
+
+
+def drop_occupied_columns(
+    values: list[list], row_number: int, updates: dict[int, object], codes: ColumnCodes
+) -> tuple[dict[int, object], dict[str, str]]:
+    reverse = reverse_write_codes(codes)
+    kept: dict[int, object] = {}
+    skipped: dict[str, str] = {}
+    for column, value in updates.items():
+        existing = (read_cell(values, row_number, column) or "").strip()
+        if existing:
+            skipped[reverse.get(column, str(column))] = existing
+        else:
+            kept[column] = value
+    return kept, skipped
+
+
+def describe_candidates(candidates: list[SupplierCandidate]) -> list[dict]:
+    return [
+        {
+            "offer_id": candidate.offer_id.value,
+            "title": candidate.title,
+            "company": candidate.company,
+            "province": candidate.province,
+            "local_price": candidate.local_price,
+        }
+        for candidate in candidates
+    ]
+
+
+class HighlightError(Exception):
+    def __init__(self, row: int, columns: list[str]) -> None:
+        super().__init__(f"背景色の設定に失敗しました: row={row} columns={columns}")
+        self.row = row
+        self.columns = columns
+
+
+def write_and_highlight(
+    repository: GoogleSheetRepository,
+    worksheet: object,
+    sheet: str,
+    row: int,
+    updates: dict[int, object],
+    codes: ColumnCodes,
+) -> int:
+    written = repository.apply_updates(sheet, {row: updates})
+    try:
+        apply_highlight(worksheet, [(row, column) for column in updates])
+    except Exception as error:
+        raise HighlightError(row, column_code_names(codes, list(updates))) from error
+    return written
+
+
+def build_targets_result(
+    table: SheetTable, codes: ColumnCodes, limit: int
+) -> tuple[list[SupplierTarget], str | None]:
+    try:
+        return select_targets(table, codes, limit=limit), None
+    except ValueError as error:
+        return [], str(error)
+
+
 def build_repository() -> GoogleSheetRepository:
     load_dotenv(PROJECT_ROOT / ".env")
     return GoogleSheetRepository(
@@ -75,7 +166,10 @@ def run_targets(args: argparse.Namespace) -> int:
     repository = build_repository()
     values, _ = read_values(repository, args.sheet)
 
-    targets = select_targets(SheetTable(values), ColumnCodes(values), limit=args.limit)
+    targets, error = build_targets_result(SheetTable(values), ColumnCodes(values), args.limit)
+    if error is not None:
+        logger.error("対象行の抽出に失敗しました", extra={"context": {"error": error}})
+        return 1
 
     print(json.dumps([asdict(target) for target in targets], ensure_ascii=False, indent=1))
     logger.info("対象行を抽出しました", extra={"context": {"count": len(targets)}})
@@ -83,6 +177,11 @@ def run_targets(args: argparse.Namespace) -> int:
 
 
 def run_write(args: argparse.Namespace) -> int:
+    header_error = header_row_error(args.row, DEFAULT_HEADER_ROW)
+    if header_error:
+        logger.error(header_error, extra={"context": {"row": args.row}})
+        return 1
+
     repository = build_repository()
     values, worksheet = read_values(repository, args.sheet)
     codes = ColumnCodes(values)
@@ -111,7 +210,15 @@ def run_write(args: argparse.Namespace) -> int:
         )
         return 1
 
-    raw_items = json.loads(Path(args.candidates).read_text(encoding="utf-8"))
+    try:
+        raw_items = parse_candidates_payload(Path(args.candidates).read_text(encoding="utf-8"))
+    except ValueError as error:
+        logger.error(
+            "候補データの形式が不正です",
+            extra={"context": {"row": args.row, "error": str(error)}},
+        )
+        return 1
+
     candidates = parse_candidates(raw_items)
     updates = build_updates(args.row, candidates, codes)
 
@@ -119,12 +226,38 @@ def run_write(args: argparse.Namespace) -> int:
         logger.warning("候補が無いため書き込みません", extra={"context": {"row": args.row}})
         return 0
 
-    repository.apply_updates(args.sheet, {args.row: updates})
-    apply_highlight(worksheet, [(args.row, column) for column in updates])
+    filtered, skipped = drop_occupied_columns(values, args.row, updates, codes)
+    if skipped:
+        logger.warning(
+            "セルに既に値が入っているため一部の列への書き込みをスキップしました",
+            extra={"context": {"row": args.row, "skipped_columns": skipped}},
+        )
+
+    if not filtered:
+        logger.warning(
+            "対象列にすべて既に値が入っているため書き込みません",
+            extra={"context": {"row": args.row}},
+        )
+        return 0
+
+    try:
+        write_and_highlight(repository, worksheet, args.sheet, args.row, filtered, codes)
+    except HighlightError as error:
+        logger.error(
+            "背景色の設定に失敗しました(値は書き込み済みです)",
+            extra={"context": {"row": error.row, "written_columns": error.columns}},
+        )
+        return 1
 
     logger.info(
         "仕入先候補を書き込みました",
-        extra={"context": {"row": args.row, "cells": len(updates)}},
+        extra={
+            "context": {
+                "row": args.row,
+                "cells": len(filtered),
+                "candidates": describe_candidates(candidates),
+            }
+        },
     )
     return 0
 
