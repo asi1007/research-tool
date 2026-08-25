@@ -705,9 +705,10 @@ function fetchAndWriteToSheet(asinColumnName) {
         'カート価格': productInfo.buyBoxPrice,
         // '数量' は1688の仕入ロット数（隣が '金額'）であり月間販売数ではない。
         // 書き込むと手入力値を壊すため対象外にしている。月間販売数の行き先は '販売数/FBA数' のみ。
+        // ヘッダーは normalizeHeader で空白を除去済みなので、キー側も空白なしで書く
         'サイズ（長さ）': productInfo.size.length || '',
         'サイズ(幅)': productInfo.size.width || '',
-        ' サイズ(高さ)': productInfo.size.height || '',
+        'サイズ(高さ)': productInfo.size.height || '',
         '重量': productInfo.weight,
         // 手数料は0を書かない。Amazonは販売時に必ず販売手数料を取るため0は正当な値になりえず、
         // カート価格が無い・手数料APIが失敗したときの0を書くと利益が過大に出る。

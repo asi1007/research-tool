@@ -1,3 +1,35 @@
+// ヘッダー名の表記ゆれを吸収する。実シートには改行入り（`販売数\n/FBA数`
+// `購入\n価格`）や先頭スペース付き（` サイズ(高さ)`）が混在しており、
+// 素の完全一致では照合できず、その列は黙って書き込まれない。
+function normalizeHeader(header) {
+  return String(header == null ? '' : header).replace(/\s+/g, '');
+}
+
+function testNormalizeHeader() {
+  const cases = [
+    ['改行を除去する', '販売数\n/FBA数', '販売数/FBA数'],
+    ['縦書きの改行も除去する', 'セ\nッ\nト', 'セット'],
+    ['先頭スペースを除去する', ' サイズ(高さ)', 'サイズ(高さ)'],
+    ['前後の空白を除去する', '  重量 \n', '重量'],
+    ['変更不要な名前はそのまま', '商品名', '商品名'],
+    ['空文字はそのまま', '', ''],
+    ['nullは空文字にする', null, ''],
+    ['数値も文字列にする', 0, '0']
+  ];
+
+  let failed = 0;
+
+  cases.forEach(([name, input, expected]) => {
+    const actual = normalizeHeader(input);
+    if (actual !== expected) {
+      failed += 1;
+      Logger.log(`NG: ${name} = ${JSON.stringify(actual)} (期待値: ${JSON.stringify(expected)})`);
+    }
+  });
+
+  Logger.log(failed === 0 ? `OK: ${cases.length}件すべて成功` : `NG: ${failed}件失敗`);
+}
+
 /**
  * スプレッドシートの行データを表すクラス
  * ASIN列のみを保持
@@ -77,6 +109,10 @@ class SheetDataReader {
         return header;
       });
     }
+
+    // 表記ゆれを吸収してから保持する。照合(includes)も書き込み(indexOf)も
+    // この配列を見るため、ここで揃えれば両方が一度に直る。
+    this.headers = this.headers.map(normalizeHeader);
   }
 
   /**
@@ -131,6 +167,10 @@ class SheetDataReader {
         return header;
       });
     }
+
+    // 表記ゆれを吸収してから保持する。照合(includes)も書き込み(indexOf)も
+    // この配列を見るため、ここで揃えれば両方が一度に直る。
+    this.headers = this.headers.map(normalizeHeader);
 
     // データ行を取得
     if (lastRow > this.headerRow) {
