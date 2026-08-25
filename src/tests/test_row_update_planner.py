@@ -121,13 +121,21 @@ class TestZeroValues:
 
         assert updates[27] == 0
 
-    def test_手数料が0でも書き込む(self) -> None:
+    def test_手数料が0なら書き込まない(self) -> None:
         product = ProductInfo(asin=Asin("B0CCX6ZXRV"), title="商品", referral_fee=0, fba_fee=0)
 
         updates = _planner().plan([""] * len(HEADERS), product, international_shipping=0)
 
-        assert updates[38] == 0
-        assert updates[39] == 0
+        assert 38 not in updates
+        assert 39 not in updates
+
+    def test_手数料が取れていれば書き込む(self) -> None:
+        product = ProductInfo(asin=Asin("B0CCX6ZXRV"), title="商品", referral_fee=74, fba_fee=290)
+
+        updates = _planner().plan([""] * len(HEADERS), product, international_shipping=0)
+
+        assert updates[38] == 74
+        assert updates[39] == 290
 
     def test_国際送料が0でも書き込む(self) -> None:
         product = ProductInfo(asin=Asin("B0CCX6ZXRV"), title="商品")

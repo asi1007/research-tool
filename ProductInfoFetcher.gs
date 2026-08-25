@@ -703,13 +703,16 @@ function fetchAndWriteToSheet(asinColumnName) {
         '画像URL': imageFormula,
         '発売日': productInfo.releaseDate,
         'カート価格': productInfo.buyBoxPrice,
-        '数量': productInfo.monthlySold,
+        // '数量' は1688の仕入ロット数（隣が '金額'）であり月間販売数ではない。
+        // 書き込むと手入力値を壊すため対象外にしている。月間販売数の行き先は '販売数/FBA数' のみ。
         'サイズ（長さ）': productInfo.size.length || '',
         'サイズ(幅)': productInfo.size.width || '',
         ' サイズ(高さ)': productInfo.size.height || '',
         '重量': productInfo.weight,
-        '販売手数料': productInfo.salesCommission,
-        '配送代行手数料（FBA手数料）': productInfo.fbaFee,
+        // 手数料は0を書かない。Amazonは販売時に必ず販売手数料を取るため0は正当な値になりえず、
+        // カート価格が無い・手数料APIが失敗したときの0を書くと利益が過大に出る。
+        '販売手数料': productInfo.salesCommission > 0 ? productInfo.salesCommission : null,
+        '配送代行手数料（FBA手数料）': productInfo.fbaFee > 0 ? productInfo.fbaFee : null,
         '販売数/FBA数': productInfo.monthlySold,
         '国際送料': shippingCalculator.calculate(
           productInfo.size.length || 0,
@@ -719,16 +722,25 @@ function fetchAndWriteToSheet(asinColumnName) {
         )
       };
 
-      // 存在するヘッダのみに絞り込み
+      // 存在するヘッダのみに絞り込む。値が null の項目は「取得できなかった」ことを表すので書かない
       const updateData = {};
       const droppedHeaders = [];
+      const unresolvedHeaders = [];
       Object.keys(allUpdateData).forEach(headerName => {
-        if (headers.includes(headerName)) {
-          updateData[headerName] = allUpdateData[headerName];
-        } else {
+        if (!headers.includes(headerName)) {
           droppedHeaders.push(headerName);
+          return;
         }
+        if (allUpdateData[headerName] === null) {
+          unresolvedHeaders.push(headerName);
+          return;
+        }
+        updateData[headerName] = allUpdateData[headerName];
       });
+
+      if (unresolvedHeaders.length > 0) {
+        Logger.log(`行 ${rowNumber}: 値を取得できず空欄のままにする列: ${JSON.stringify(unresolvedHeaders)}`);
+      }
 
       if (droppedHeaders.length > 0) {
         Logger.log(`行 ${rowNumber}: シートに無いため書き込まない列: ${JSON.stringify(droppedHeaders)}`);
