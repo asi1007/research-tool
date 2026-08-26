@@ -67,6 +67,25 @@
     .venv/bin/python find_supplier.py write --sheet "<シート名>" --row <行番号> --candidates <JSONファイル>
     ```
 
+## 手数を減らす（browser_batch でまとめる）
+
+1商品ごとに navigate / wait / click / wait / extract を個別に呼ぶと**7〜8往復**かかる。
+`mcp__claude-in-chrome__browser_batch` は複数アクションを1回で順に実行できるので、
+**アップロード後の「待機→クリック→待機→抽出」は1回にまとめる。**
+
+```
+browser_batch actions:
+  1. computer        wait 9      （アップロードの反映を待つ）
+  2. javascript_tool div.search-btn へイベント列を送る
+  3. computer        wait 10     （検索結果の描画を待つ）
+  4. javascript_tool extract_candidates.js
+```
+
+4番の戻り値が候補JSONになる。**待機を削ってはいけない**（9秒・10秒とも実測値。
+短くすると検索が走る前に抽出して空配列が返る）。
+
+navigate と file_upload は前段でまとめる。1商品あたり**3往復**まで減る。
+
 ## クリックは JS で送る
 
 「搜索图片」ボタンは **`div.search-btn`**。`find` で得た ref のクリックも座標クリックも
@@ -205,3 +224,6 @@ Amazonの1リスティングに対して何個分かを**候補ごとに**判断
 - 既に値が入っている列は `write` が自動でスキップする。
   「セルに既に値が入っているため一部の列への書き込みをスキップしました」は正常なログ
 - 開いたタブは `mcp__claude-in-chrome__tabs_close_mcp` で閉じる
+- **`write` が Google Sheets の 503 で落ちたら、再実行の前に対象行を読んで確認する。**
+  途中まで書けている場合があり、そのまま再実行すると「既に値がある」でスキップされて
+  歯抜けになる。2026-08-25 に発生（このときは未書き込みだったのでそのまま再実行した）
