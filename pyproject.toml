@@ -1,6 +1,6 @@
 [project]
 name = "research-tool"
-version = "0.4.9"
+version = "0.5.0"
 requires-python = ">=3.10"
 dependencies = [
     "gspread>=6.0.0",
