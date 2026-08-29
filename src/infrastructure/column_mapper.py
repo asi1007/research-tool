@@ -7,6 +7,7 @@ FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "release_date": ("発売日",),
     "buy_box_price": ("カート価格",),
     "monthly_sold": ("販売数/FBA数",),
+    "quantity": ("数量",),
     "size_length": ("サイズ（長さ）", "サイズ(長さ)"),
     "size_width": ("サイズ(幅)", "サイズ（幅）"),
     "size_height": ("サイズ(高さ)", "サイズ（高さ）"),

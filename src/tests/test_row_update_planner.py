@@ -41,13 +41,13 @@ class TestNeedsFetch:
 
     def test_書き込み対象が全て埋まっていれば取得不要(self) -> None:
         row = [""] * len(HEADERS)
-        for index in (5, 6, 10, 26, 27, 28, 29, 30, 31, 35, 38, 39):
+        for index in (5, 6, 9, 10, 26, 27, 28, 29, 30, 31, 35, 38, 39):
             row[index] = "値"
         assert _planner().needs_fetch(row) is False
 
     def test_上書きモードでは常に取得が必要(self) -> None:
         row = [""] * len(HEADERS)
-        for index in (5, 6, 10, 26, 27, 28, 29, 30, 31, 35, 38, 39):
+        for index in (5, 6, 9, 10, 26, 27, 28, 29, 30, 31, 35, 38, 39):
             row[index] = "値"
         assert _planner(overwrite=True).needs_fetch(row) is True
 
@@ -70,6 +70,7 @@ class TestPlan:
         assert updates[35] == 18
         assert updates[38] == 74
         assert updates[39] == 290
+        assert updates[9] == 42
 
     def test_上書きモードでは既存値も置き換える(self) -> None:
         row = [""] * len(HEADERS)
@@ -79,8 +80,16 @@ class TestPlan:
 
         assert updates[6] == "テスト商品"
 
-    def test_仕入ロット数の数量列には書き込まない(self) -> None:
+    def test_数量列には月間販売数と同じ値を書き込む(self) -> None:
         updates = _planner().plan([""] * len(HEADERS), PRODUCT, international_shipping=18)
+
+        assert updates[9] == PRODUCT.monthly_sold
+
+    def test_数量列に既存値があれば上書きしない(self) -> None:
+        row = [""] * len(HEADERS)
+        row[9] = "50"
+
+        updates = _planner().plan(row, PRODUCT, international_shipping=18)
 
         assert 9 not in updates
 
@@ -120,6 +129,13 @@ class TestZeroValues:
         updates = _planner().plan([""] * len(HEADERS), product, international_shipping=0)
 
         assert updates[27] == 0
+
+    def test_月間販売数が0でも数量列に0を書き込む(self) -> None:
+        product = ProductInfo(asin=Asin("B0CCX6ZXRV"), title="商品", monthly_sold=0)
+
+        updates = _planner().plan([""] * len(HEADERS), product, international_shipping=0)
+
+        assert updates[9] == 0
 
     def test_手数料が0なら書き込まない(self) -> None:
         product = ProductInfo(asin=Asin("B0CCX6ZXRV"), title="商品", referral_fee=0, fba_fee=0)

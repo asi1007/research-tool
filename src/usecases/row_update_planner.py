@@ -6,7 +6,10 @@ from src.infrastructure.column_mapper import ColumnMapper
 # 取得できた値が0でも書き込む項目。空欄のままだと未取得と区別できず毎回再取得されるため。
 # 手数料は含めない。Amazonは販売時に必ず販売手数料を取るため0は正当な値になりえず、
 # カート価格が無い・手数料APIが失敗したときの0を書くと利益が過大に出る。
-ZERO_WRITABLE_FIELDS = frozenset({"buy_box_price", "monthly_sold", "international_shipping"})
+# quantity は monthly_sold と同じ値（月間販売数）を書くため、0を正当な値として扱う。
+ZERO_WRITABLE_FIELDS = frozenset(
+    {"buy_box_price", "monthly_sold", "quantity", "international_shipping"}
+)
 
 
 class RowUpdatePlanner:
@@ -47,6 +50,7 @@ class RowUpdatePlanner:
             "release_date": product.release_date,
             "buy_box_price": product.buy_box_price,
             "monthly_sold": product.monthly_sold,
+            "quantity": product.monthly_sold,
             "size_length": product.size.length_mm,
             "size_width": product.size.width_mm,
             "size_height": product.size.height_mm,

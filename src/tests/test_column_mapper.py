@@ -39,10 +39,10 @@ class TestColumnMapperResolve:
     def test_高さ列の先頭空白を許容して解決する(self) -> None:
         assert ColumnMapper(HEADERS_RESEARCH).column_index("size_height") == 30
 
-    def test_仕入ロット数の数量列には解決しない(self) -> None:
+    def test_数量列はquantityとして解決する(self) -> None:
         mapper = ColumnMapper(HEADERS_RESEARCH)
+        assert mapper.column_index("quantity") == 9
         assert mapper.column_index("monthly_sold") == 27
-        assert mapper.column_index("monthly_sold") != 9
 
     def test_ASIN列は3列目に解決する(self) -> None:
         assert ColumnMapper(HEADERS_RESEARCH).column_index("asin") == 2
@@ -53,5 +53,6 @@ class TestColumnMapperResolve:
 
         assert "title" in writable
         assert "image" in writable
+        assert "quantity" in writable
         assert "release_date" not in writable
         assert "size_length" not in writable

@@ -703,9 +703,9 @@ function fetchAndWriteToSheet(asinColumnName) {
         '画像URL': imageFormula,
         '発売日': productInfo.releaseDate,
         'カート価格': productInfo.buyBoxPrice,
-        // '数量' は1688の仕入ロット数（隣が '金額'）であり月間販売数ではない。
-        // 書き込むと手入力値を壊すため対象外にしている。月間販売数の行き先は '販売数/FBA数' のみ。
+        // 月間販売数（Keepa の monthlySold）は '販売数/FBA数' と '数量' の両方へ書く。
         // ヘッダーは normalizeHeader で空白を除去済みなので、キー側も空白なしで書く
+        '数量': productInfo.monthlySold,
         'サイズ（長さ）': productInfo.size.length || '',
         'サイズ(幅)': productInfo.size.width || '',
         'サイズ(高さ)': productInfo.size.height || '',
