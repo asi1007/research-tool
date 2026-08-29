@@ -116,6 +116,14 @@ Amazon は販売時に必ず販売手数料を取るため 0 は正当な値に�
 
 1688 URL が決まったあとの仕入先登録は、親リポジトリのスキル `register-supplier` で自動化済み。
 
+## 売れ筋新商品の発見（Keepa Product Finder）
+
+`discover_products.py` が条件に合う ASIN を「自動調査」タブへ積む。手順は `/market-research`。
+
+- **`releaseDate` は 0 の商品が大半で使えない。** 発売日の判定は `listedSince`（Amazon 出品日）
+- **Amazon 本体の除外は `availabilityAmazon: [-1]`。** `current_AMAZON` の範囲指定は 0件になる
+- **`perPage` は 50 未満だと 400 エラー。** 1回 11トークン
+
 ## テスト
 
 GAS には実行環境が無いので、テスト関数を `.gs` に同梱して両方から実行できるようにしている。
