@@ -62,6 +62,23 @@ class GoogleSheetRepository:
         values = worksheet.get_values(value_render_option=FORMULA_RENDER_OPTION)
         return SheetTable(values, header_row=header_row)
 
+    def read_values(self, sheet_name: str) -> list[list]:
+        worksheet = self.spreadsheet.worksheet(sheet_name)
+        return worksheet.get_values(value_render_option=FORMULA_RENDER_OPTION)
+
+    def ensure_rows(self, sheet_name: str, last_row_number: int) -> int:
+        worksheet = self.spreadsheet.worksheet(sheet_name)
+        shortage = last_row_number - worksheet.row_count
+        if shortage <= 0:
+            return 0
+
+        worksheet.add_rows(shortage)
+        logger.info(
+            "行を追加しました",
+            extra={"context": {"sheet": sheet_name, "added": shortage}},
+        )
+        return shortage
+
     def apply_updates(self, sheet_name: str, updates: dict[int, dict[int, object]]) -> int:
         if not updates:
             return 0
