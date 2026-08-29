@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 from src.infrastructure.column_codes import ColumnCodes
@@ -104,9 +105,20 @@ class BatchParseResult:
     dropped: list[DroppedItem] = field(default_factory=list)
 
 
+_CODE_FENCE_RE = re.compile(r"^```[a-zA-Z0-9_+-]*\s*\n?(.*?)\n?```$", re.DOTALL)
+
+
+def strip_code_fence(text: str) -> str:
+    stripped = text.strip()
+    match = _CODE_FENCE_RE.match(stripped)
+    if match is None:
+        return stripped
+    return match.group(1).strip()
+
+
 def parse_batch_response(response_text: str, batch_size: int) -> BatchParseResult:
     try:
-        data = json.loads(response_text)
+        data = json.loads(strip_code_fence(response_text))
     except json.JSONDecodeError as error:
         return BatchParseResult({}, f"JSONとして解析できません: {error}")
 

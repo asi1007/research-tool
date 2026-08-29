@@ -10,6 +10,7 @@ from src.usecases.shorten_titles import (
     chunk_targets,
     extract_targets,
     parse_batch_response,
+    strip_code_fence,
 )
 
 CODE_ROW = ["んh", "CHECK2", "ASIN_SELL", "JAN", "UPC", "IMAGE", "TITLE_SELL", "TITLE_BUY"]
@@ -175,6 +176,33 @@ class TestBuildPrompt:
         assert "0: 空白 多め 商品名" in prompt.splitlines()
 
 
+class TestStripCodeFence:
+    def test_json言語指定のフェンスを剥がす(self) -> None:
+        text = '```json\n[1, 2, 3]\n```'
+
+        assert strip_code_fence(text) == "[1, 2, 3]"
+
+    def test_言語指定なしのフェンスを剥がす(self) -> None:
+        text = '```\n[1, 2, 3]\n```'
+
+        assert strip_code_fence(text) == "[1, 2, 3]"
+
+    def test_フェンスが無ければそのまま返す(self) -> None:
+        text = '[1, 2, 3]'
+
+        assert strip_code_fence(text) == "[1, 2, 3]"
+
+    def test_前後の空白と改行を落とす(self) -> None:
+        text = '\n\n  [1, 2, 3]  \n\n'
+
+        assert strip_code_fence(text) == "[1, 2, 3]"
+
+    def test_フェンスの前後にも空白改行があっても剥がす(self) -> None:
+        text = '  ```json\n[1, 2, 3]\n```  '
+
+        assert strip_code_fence(text) == "[1, 2, 3]"
+
+
 class TestParseBatchResponse:
     def test_正常な応答をパースできる(self) -> None:
         text = '[{"index": 0, "short_title": "商品A短"}, {"index": 1, "short_title": "商品B短"}]'
@@ -230,8 +258,32 @@ class TestParseBatchResponse:
         assert result.error is not None
         assert result.short_titles == {}
 
-    def test_コードフェンス付きの応答はバッチ全体が捨てられる(self) -> None:
+    def test_jsonコードフェンス付きの応答も剥がしてパースできる(self) -> None:
         text = '```json\n[{"index": 0, "short_title": "商品A"}]\n```'
+
+        result = parse_batch_response(text, batch_size=1)
+
+        assert result.error is None
+        assert result.short_titles == {0: "商品A"}
+
+    def test_言語指定なしのコードフェンスも剥がしてパースできる(self) -> None:
+        text = '```\n[{"index": 0, "short_title": "商品A"}]\n```'
+
+        result = parse_batch_response(text, batch_size=1)
+
+        assert result.error is None
+        assert result.short_titles == {0: "商品A"}
+
+    def test_フェンスが無い素のJSONは従来どおりパースできる(self) -> None:
+        text = '[{"index": 0, "short_title": "商品A"}]'
+
+        result = parse_batch_response(text, batch_size=1)
+
+        assert result.error is None
+        assert result.short_titles == {0: "商品A"}
+
+    def test_フェンスを剥がしてもJSONでなければバッチ全体が捨てられる(self) -> None:
+        text = '```json\nこれはJSONではありません\n```'
 
         result = parse_batch_response(text, batch_size=1)
 
