@@ -59,9 +59,7 @@ class GoogleSheetRepository:
         return [worksheet.title for worksheet in self.spreadsheet.worksheets()]
 
     def read_table(self, sheet_name: str, header_row: int = DEFAULT_HEADER_ROW) -> SheetTable:
-        worksheet = self.spreadsheet.worksheet(sheet_name)
-        values = worksheet.get_values(value_render_option=FORMULA_RENDER_OPTION)
-        return SheetTable(values, header_row=header_row)
+        return SheetTable(self.read_values(sheet_name), header_row=header_row)
 
     def read_values(self, sheet_name: str) -> list[list]:
         worksheet = self.spreadsheet.worksheet(sheet_name)

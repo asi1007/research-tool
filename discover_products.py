@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import subprocess
 import sys
 from datetime import date, datetime, timezone
@@ -11,6 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.domain.value_objects.discovery_criteria import DiscoveryCriteria
+from src.infrastructure.env import require_env
 from src.infrastructure.keepa_client import KeepaClient
 from src.infrastructure.logging_config import configure_logging
 from src.infrastructure.sheet_repository import GoogleSheetRepository
@@ -38,27 +38,41 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_repository() -> GoogleSheetRepository:
-    load_dotenv(PROJECT_ROOT / ".env")
     return GoogleSheetRepository(
-        str(PROJECT_ROOT / os.environ["SERVICE_ACCOUNT_FILE"]),
-        os.environ["RESEARCH_SPREADSHEET_ID"],
+        str(PROJECT_ROOT / require_env("SERVICE_ACCOUNT_FILE")),
+        require_env("RESEARCH_SPREADSHEET_ID"),
     )
 
 
+def build_keepa() -> KeepaClient:
+    return KeepaClient(require_env("KEEPA_API_KEY"))
+
+
 def fetch_command(sheet: str) -> list[str]:
-    return [sys.executable, str(PROJECT_ROOT / "fetch_products.py"), "--sheet", sheet]
+    return [
+        sys.executable,
+        str(PROJECT_ROOT / "fetch_products.py"),
+        "--sheet",
+        sheet,
+        "--interval",
+        "auto",
+    ]
 
 
 def collect_known(repository: GoogleSheetRepository) -> set[str]:
     return known_asins(repository.read_all_values())
 
 
-def run(args: argparse.Namespace) -> int:
+def run(
+    args: argparse.Namespace,
+    repository: GoogleSheetRepository | None = None,
+    keepa: KeepaClient | None = None,
+) -> int:
     load_dotenv(PROJECT_ROOT / ".env")
-    keepa = KeepaClient(os.environ["KEEPA_API_KEY"])
+    keepa = keepa or build_keepa()
+    repository = repository or build_repository()
 
     found = keepa.find_asins(DiscoveryCriteria(), datetime.now(timezone.utc))
-    repository = build_repository()
     fresh = select_new_asins(found, collect_known(repository), limit=args.limit)
 
     logger.info(
@@ -68,19 +82,20 @@ def run(args: argparse.Namespace) -> int:
     for asin in fresh:
         print(f"{asin} {asin.amazon_url}")
 
-    if not fresh or args.dry_run:
+    if args.dry_run:
         return 0
 
-    values = repository.read_values(DISCOVERY_SHEET)
-    plan = plan_append(values, fresh, date.today())
-    if plan.rows_to_add:
-        repository.ensure_rows(DISCOVERY_SHEET, max(plan.updates))
-    written = repository.apply_updates(DISCOVERY_SHEET, plan.updates)
+    if fresh:
+        values = repository.read_values(DISCOVERY_SHEET)
+        plan = plan_append(values, fresh, date.today())
+        if plan.rows_to_add:
+            repository.ensure_rows(DISCOVERY_SHEET, max(plan.updates))
+        written = repository.apply_updates(DISCOVERY_SHEET, plan.updates)
 
-    logger.info(
-        "自動調査タブへ追記しました",
-        extra={"context": {"cells": written, "rows": len(plan.updates)}},
-    )
+        logger.info(
+            "自動調査タブへ追記しました",
+            extra={"context": {"cells": written, "rows": len(plan.updates)}},
+        )
 
     if args.no_fetch:
         return 0

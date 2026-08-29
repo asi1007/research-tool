@@ -10,7 +10,7 @@ DISCOVERY_SHEET = "自動調査"
 ASIN_CODE = "ASIN_SELL"
 NOTE_CODE = "NOTE_BUY_OTHER2"
 NOTE_PREFIX = "自動調査"
-DATA_START_ROW = 3
+HEADER_ROWS = 3
 
 
 def known_asins(sheet_values: dict[str, list[list]]) -> set[str]:
@@ -21,7 +21,7 @@ def known_asins(sheet_values: dict[str, list[list]]) -> set[str]:
         if asin_index is None:
             continue
 
-        for row in values[DATA_START_ROW:]:
+        for row in values[HEADER_ROWS:]:
             if asin_index >= len(row):
                 continue
             asin = Asin.parse(row[asin_index])
@@ -38,12 +38,12 @@ def select_new_asins(
     seen = set(known)
 
     for asin in found:
+        if limit is not None and len(selected) >= limit:
+            break
         if str(asin) in seen:
             continue
         seen.add(str(asin))
         selected.append(asin)
-        if limit is not None and len(selected) >= limit:
-            break
 
     return selected
 
@@ -70,13 +70,13 @@ def plan_append(values: list[list], asins: list[Asin], discovered_on: date) -> A
 
     note = f"{NOTE_PREFIX}{discovered_on.isoformat()}"
     blank_rows = [
-        DATA_START_ROW + offset + 1
-        for offset, row in enumerate(values[DATA_START_ROW:])
+        HEADER_ROWS + offset + 1
+        for offset, row in enumerate(values[HEADER_ROWS:])
         if _is_blank(row, asin_index)
     ]
 
     updates: dict[int, dict[int, object]] = {}
-    next_row = len(values) + 1
+    next_row = max(len(values), HEADER_ROWS) + 1
     rows_to_add = 0
 
     for position, asin in enumerate(asins):

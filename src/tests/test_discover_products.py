@@ -1,5 +1,7 @@
 from datetime import date
 
+import pytest
+
 from src.domain.value_objects.asin import Asin
 from src.usecases.discover_products import known_asins, plan_append, select_new_asins
 
@@ -31,6 +33,10 @@ class TestKnownAsins:
     def test_解釈できないセルは無視する(self) -> None:
         assert known_asins({"候補": _sheet(["", "https://amzn.to/xxxx", "-"])}) == set()
 
+    def test_行の長さがASIN列に届かない場合は無視する(self) -> None:
+        values = [CODE_ROW, HEADER_2, HEADER_3, ["", ""]]
+        assert known_asins({"候補": values}) == set()
+
 
 class TestSelectNewAsins:
     def test_既知を除いた順序を保つ(self) -> None:
@@ -48,6 +54,14 @@ class TestSelectNewAsins:
     def test_上限で切る(self) -> None:
         found = [Asin("B000000001"), Asin("B000000002")]
         assert [str(a) for a in select_new_asins(found, set(), limit=1)] == ["B000000001"]
+
+    def test_上限0件なら何も返さない(self) -> None:
+        found = [Asin("B000000001"), Asin("B000000002")]
+        assert select_new_asins(found, set(), limit=0) == []
+
+    def test_上限が負の数でも何も返さない(self) -> None:
+        found = [Asin("B000000001")]
+        assert select_new_asins(found, set(), limit=-1) == []
 
 
 APPEND_CODE_ROW = ["んh", "CHECK2", "ASIN_SELL", "JAN", "UPC", "IMAGE", "TITLE_SELL",
@@ -96,3 +110,30 @@ class TestPlanAppend:
 
         assert plan.updates == {}
         assert plan.rows_to_add == 0
+
+    def test_空行が一部だけ足りる場合は空行と新規行を混在させる(self) -> None:
+        asins = [Asin("B000000009"), Asin("B000000008")]
+
+        plan = plan_append(_append_sheet(["B000000001", ""]), asins, DISCOVERED_ON)
+
+        assert sorted(plan.updates) == [5, 6]
+        assert plan.updates[5][2] == "B000000009"
+        assert plan.updates[6][2] == "B000000008"
+        assert plan.rows_to_add == 1
+
+    def test_列コードが欠けていると例外(self) -> None:
+        values = [["んh", "OTHER_CODE"], ["", ""], ["", ""], ["", ""]]
+
+        with pytest.raises(ValueError, match="ASIN_SELL"):
+            plan_append(values, [Asin("B000000009")], DISCOVERED_ON)
+
+    def test_3行未満のシートでもヘッダー行には書き込まない(self) -> None:
+        values = [
+            ["んh", "CHECK2", "ASIN_SELL", "NOTE_BUY_OTHER2"],
+            ["", "", "ASIN", "備考"],
+        ]
+
+        plan = plan_append(values, [Asin("B000000009")], DISCOVERED_ON)
+
+        assert plan.updates == {4: {2: "B000000009", 3: "自動調査2026-08-29"}}
+        assert plan.rows_to_add == 1

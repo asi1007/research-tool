@@ -5,9 +5,9 @@ Keepa Product Finder で「安い・売れてる・出たばかり」の商品�
 ## 実行
 
 ```bash
-.venv/bin/python discover_products.py --dry-run          # まず件数だけ見る（書き込まない）
-.venv/bin/python discover_products.py --limit 3           # 少数だけ試しに書き込む
-.venv/bin/python discover_products.py                      # 本番（上限なし、fetch_products.py まで実行）
+.venv/bin/python discover_products.py --dry-run                      # まず件数だけ見る（書き込まない）
+.venv/bin/python discover_products.py --limit 3 --no-fetch            # 少数だけ試しに書き込む（商品情報の取得はしない）
+.venv/bin/python discover_products.py                                  # 本番（上限なし、fetch_products.py まで実行）
 ```
 
 - `--no-fetch` … 「自動調査」タブへ書くところで止める（`fetch_products.py` を呼ばない）
@@ -30,7 +30,7 @@ Keepa Product Finder で「安い・売れてる・出たばかり」の商品�
 | 並び順 | `monthlySold` 降順 |
 | `perPage` | 50 |
 
-**実測値（2026-08-29）**: 条件のみで202件 → Amazon本体の出品を除外して88件 → 除外カテゴリを引いて62件。CLI の実機実行では発見59件・うち未知58件、`--limit 3` で3件を書き込み確認済み。
+**実測値（2026-08-29）**: 条件のみで202件 → Amazon本体の出品を除外して88件 → 除外カテゴリを引いて62件。CLI の実機実行ログは `found: 59, new: 55`（`found` は条件に合う件数、`new` はそこから全タブの既知ASINを除いた未知件数）、`--limit 3` で3件を書き込み確認済み。
 
 ## Keepa の落とし穴（知らないと必ず詰まる）
 
@@ -50,7 +50,9 @@ Keepa Product Finder で「安い・売れてる・出たばかり」の商品�
 
 ## 0件は正常
 
-条件に合う商品が無ければ0件で終わる。エラーではない。条件が厳しすぎると疑う場合は、次の順で緩める。
+ログの `found`（条件に合う件数）と `new`（そこから既知ASINを除いた未知件数）は意味が違う。**`new: 0` は毎日ありうる正常な結果で、条件を緩める理由にはならない。** 前日までに大半が「自動調査」タブや他タブへ積まれていれば、条件は変わらなくても新規に見つかる件数は自然に減っていく。
+
+条件が厳しすぎると疑ってよいのは `found` 自体が0（またはごく少数）のときだけ。その場合は次の順で緩める。
 
 1. 月販（`min_monthly_sold`）を下げる
 2. 価格（`max_price_yen`）の上限を上げる

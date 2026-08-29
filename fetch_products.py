@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
+from src.infrastructure.env import require_env
 from src.infrastructure.exchange_rate_client import fetch_cny_to_jpy_rate
 from src.infrastructure.keepa_client import KeepaClient
 from src.infrastructure.logging_config import configure_logging
@@ -67,13 +67,6 @@ def resolve_sheets(args: argparse.Namespace) -> list[str]:
     if args.all:
         return list(DEFAULT_SHEETS)
     return []
-
-
-def require_env(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise SystemExit(f"環境変数 {name} が設定されていません。.env を確認してください。")
-    return value
 
 
 def resolve_interval(raw: str, keepa: KeepaClient) -> float:
@@ -151,6 +144,33 @@ def print_summary(results: list[SheetResult], dry_run: bool) -> None:
     )
 
 
+def run_sheets(usecase: BulkFetchProductsUseCase, sheets: list[str], args: argparse.Namespace) -> int:
+    results = []
+    failed_sheets: list[str] = []
+    for sheet_name in sheets:
+        logger.info("シートの処理を開始", extra={"context": {"sheet": sheet_name}})
+        try:
+            if args.count_only:
+                results.append(usecase.count_targets(sheet_name))
+            else:
+                results.append(usecase.execute(sheet_name, limit=args.limit))
+        except Exception as error:
+            failed_sheets.append(sheet_name)
+            logger.error(
+                "シートの処理に失敗", extra={"context": {"sheet": sheet_name}}, exc_info=error
+            )
+
+    print_summary(results, dry_run=args.dry_run or args.count_only)
+
+    if failed_sheets:
+        logger.error(
+            "失敗したシートがあるため異常終了します",
+            extra={"context": {"failed_sheets": failed_sheets}},
+        )
+        return 1
+    return 0
+
+
 def main() -> int:
     args = parse_args()
     configure_logging(logging.DEBUG if args.debug else logging.INFO)
@@ -163,22 +183,7 @@ def main() -> int:
         return 1
 
     usecase = build_usecase(args)
-
-    results = []
-    for sheet_name in sheets:
-        logger.info("シートの処理を開始", extra={"context": {"sheet": sheet_name}})
-        try:
-            if args.count_only:
-                results.append(usecase.count_targets(sheet_name))
-            else:
-                results.append(usecase.execute(sheet_name, limit=args.limit))
-        except Exception as error:
-            logger.error(
-                "シートの処理に失敗", extra={"context": {"sheet": sheet_name}}, exc_info=error
-            )
-
-    print_summary(results, dry_run=args.dry_run or args.count_only)
-    return 0
+    return run_sheets(usecase, sheets, args)
 
 
 if __name__ == "__main__":
