@@ -26,7 +26,11 @@ class FakeRepository:
 
 
 class FakeClaudeCli:
-    def __init__(self, responses: list[str] | None = None, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        responses: list[str | Exception] | None = None,
+        error: Exception | None = None,
+    ) -> None:
         self.responses = responses or []
         self.error = error
         self.calls = 0
@@ -38,6 +42,8 @@ class FakeClaudeCli:
             raise self.error
         response = self.responses[self.calls]
         self.calls += 1
+        if isinstance(response, Exception):
+            raise response
         return response
 
 
@@ -143,3 +149,48 @@ class TestRun:
         calls = dict(repository.apply_updates_calls)
         assert calls["タブA"] == {4: {7: "短縮A"}}
         assert calls["タブB"] == {4: {7: "短縮B"}}
+
+    def test_後続バッチが失敗しても先行バッチの書き込みは残る(self) -> None:
+        values = _values(
+            [
+                ["B000000001", "", "", "", "", "", "商品A"],
+                ["B000000002", "", "", "", "", "", "商品B"],
+                ["B000000003", "", "", "", "", "", "商品C"],
+            ]
+        )
+        repository = FakeRepository({"タブA": values})
+        cli = FakeClaudeCli(
+            responses=[
+                '[{"index": 0, "short_title": "短縮A"}]',
+                '[{"index": 0, "short_title": "短縮B"}]',
+                ClaudeCliError("3件目でクラッシュ"),
+            ]
+        )
+
+        result = run(_args(), repository=repository, cli=cli, batch_size=1)
+
+        assert result == 0
+        assert repository.apply_updates_calls == [
+            ("タブA", {4: {7: "短縮A"}}),
+            ("タブA", {5: {7: "短縮B"}}),
+        ]
+
+    def test_後続バッチが応答検証で失敗しても先行バッチの書き込みは残る(self) -> None:
+        values = _values(
+            [
+                ["B000000001", "", "", "", "", "", "商品A"],
+                ["B000000002", "", "", "", "", "", "商品B"],
+            ]
+        )
+        repository = FakeRepository({"タブA": values})
+        cli = FakeClaudeCli(
+            responses=[
+                '[{"index": 0, "short_title": "短縮A"}]',
+                "これはJSONではない",
+            ]
+        )
+
+        result = run(_args(), repository=repository, cli=cli, batch_size=1)
+
+        assert result == 0
+        assert repository.apply_updates_calls == [("タブA", {4: {7: "短縮A"}})]

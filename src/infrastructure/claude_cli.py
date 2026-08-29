@@ -32,11 +32,12 @@ class ClaudeCli:
                 input=prompt,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=self.timeout,
                 check=False,
             )
-        except subprocess.TimeoutExpired as error:
-            raise ClaudeCliError(f"claude -p がタイムアウトしました: {error}") from error
+        except (subprocess.TimeoutExpired, OSError) as error:
+            raise ClaudeCliError(f"claude -p の実行に失敗しました: {error}") from error
 
         if completed.returncode != 0:
             raise ClaudeCliError(

@@ -63,8 +63,14 @@ def chunk_targets(
     return [targets[i : i + size] for i in range(0, len(targets), size)]
 
 
+def _sanitize_for_prompt(title: str) -> str:
+    return " ".join(title.split())
+
+
 def build_prompt(titles: list[str]) -> str:
-    lines = "\n".join(f"{index}: {title}" for index, title in enumerate(titles))
+    lines = "\n".join(
+        f"{index}: {_sanitize_for_prompt(title)}" for index, title in enumerate(titles)
+    )
     return (
         "以下はECサイトの商品名の配列です。各商品名を全角10文字以内の短縮名にしてください。\n"
         "ルール:\n"
@@ -138,11 +144,3 @@ def build_updates(batch: list[TitleTarget], parsed: dict[int, str]) -> Updates:
         row_updates = sheet_updates.setdefault(target.row_number, {})
         row_updates[target.title_buy_column] = parsed[index]
     return updates
-
-
-def merge_updates(destination: Updates, source: Updates) -> None:
-    for sheet_name, row_updates in source.items():
-        sheet_destination = destination.setdefault(sheet_name, {})
-        for row_number, column_updates in row_updates.items():
-            row_destination = sheet_destination.setdefault(row_number, {})
-            row_destination.update(column_updates)

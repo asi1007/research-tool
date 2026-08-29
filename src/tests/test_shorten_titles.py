@@ -6,7 +6,6 @@ from src.usecases.shorten_titles import (
     build_updates,
     chunk_targets,
     extract_targets,
-    merge_updates,
     parse_batch_response,
 )
 
@@ -135,6 +134,24 @@ class TestBuildPrompt:
         assert "index" in prompt
         assert "short_title" in prompt
 
+    def test_商品名の改行は1行の番号付きリストが崩れないよう空白に潰す(self) -> None:
+        prompt = build_prompt(["改行\n入り\n商品名", "商品B"])
+
+        lines = prompt.splitlines()
+        assert "0: 改行 入り 商品名" in lines
+        assert "1: 商品B" in lines
+        assert "\n入り" not in prompt
+
+    def test_商品名のタブも空白に潰す(self) -> None:
+        prompt = build_prompt(["タブ\t入り\t商品名"])
+
+        assert "0: タブ 入り 商品名" in prompt.splitlines()
+
+    def test_商品名の連続する空白は1つに詰める(self) -> None:
+        prompt = build_prompt(["空白    多め   商品名"])
+
+        assert "0: 空白 多め 商品名" in prompt.splitlines()
+
 
 class TestParseBatchResponse:
     def test_正常な応答をパースできる(self) -> None:
@@ -171,6 +188,36 @@ class TestParseBatchResponse:
 
         assert result.error is not None
         assert result.short_titles == {}
+
+    def test_複数件のバッチで途中の1件だけ10文字超だとバッチ全体がエラーになる(self) -> None:
+        text = (
+            '[{"index": 0, "short_title": "商品A"}, '
+            '{"index": 1, "short_title": "商品B"}, '
+            '{"index": 2, "short_title": "12345678901"}, '
+            '{"index": 3, "short_title": "商品D"}, '
+            '{"index": 4, "short_title": "商品E"}]'
+        )
+
+        result = parse_batch_response(text, batch_size=5)
+
+        assert result.error is not None
+        assert result.short_titles == {}
+
+    def test_複数件のバッチで正常ならすべて反映される(self) -> None:
+        text = (
+            '[{"index": 0, "short_title": "商品A"}, '
+            '{"index": 1, "short_title": "商品B"}, '
+            '{"index": 2, "short_title": "商品C"}, '
+            '{"index": 3, "short_title": "商品D"}, '
+            '{"index": 4, "short_title": "商品E"}]'
+        )
+
+        result = parse_batch_response(text, batch_size=5)
+
+        assert result.error is None
+        assert result.short_titles == {
+            0: "商品A", 1: "商品B", 2: "商品C", 3: "商品D", 4: "商品E",
+        }
 
     def test_10文字ちょうどは許容する(self) -> None:
         text = '[{"index": 0, "short_title": "1234567890"}]'
@@ -238,21 +285,3 @@ class TestBuildUpdates:
         updates = build_updates(batch, {})
 
         assert updates == {}
-
-
-class TestMergeUpdates:
-    def test_異なるシートをまとめる(self) -> None:
-        merged: dict = {}
-        merge_updates(merged, {"タブA": {4: {7: "商品A短"}}})
-        merge_updates(merged, {"タブB": {10: {5: "商品B短"}}})
-
-        assert merged == {
-            "タブA": {4: {7: "商品A短"}},
-            "タブB": {10: {5: "商品B短"}},
-        }
-
-    def test_同じシートの異なる行をまとめる(self) -> None:
-        merged: dict = {"タブA": {4: {7: "商品A短"}}}
-        merge_updates(merged, {"タブA": {10: {7: "商品B短"}}})
-
-        assert merged == {"タブA": {4: {7: "商品A短"}, 10: {7: "商品B短"}}}

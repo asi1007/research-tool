@@ -13,12 +13,10 @@ from src.infrastructure.logging_config import configure_logging
 from src.infrastructure.sheet_repository import GoogleSheetRepository
 from src.usecases.shorten_titles import (
     DEFAULT_BATCH_SIZE,
-    Updates,
     build_prompt,
     build_updates,
     chunk_targets,
     extract_targets,
-    merge_updates,
     parse_batch_response,
 )
 
@@ -49,6 +47,7 @@ def run(
     args: argparse.Namespace,
     repository: GoogleSheetRepository | None = None,
     cli: ClaudeCli | None = None,
+    batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> int:
     load_dotenv(PROJECT_ROOT / ".env")
     repository = repository or build_repository()
@@ -70,9 +69,11 @@ def run(
     if not targets:
         return 0
 
-    batches = chunk_targets(targets, DEFAULT_BATCH_SIZE)
-    all_updates: Updates = {}
+    # バッチごとに解析後ただちに書き込む。全バッチ完走後にまとめて書くと、
+    # 途中のバッチで例外が起きたとき、既に生成済みの短縮名まで失われるため。
+    batches = chunk_targets(targets, batch_size)
     skipped_batches = 0
+    total_written = 0
 
     for batch_index, batch in enumerate(batches):
         prompt = build_prompt([target.title for target in batch])
@@ -96,31 +97,30 @@ def run(
             skipped_batches += 1
             continue
 
-        batch_updates = build_updates(batch, result.short_titles)
-        merge_updates(all_updates, batch_updates)
-
         if args.dry_run:
             for index, target in enumerate(batch):
                 print(f"{target.sheet}\t{target.row_number}\t{target.title}\t→\t{result.short_titles[index]}")
+            continue
+
+        batch_updates = build_updates(batch, result.short_titles)
+        for sheet_name, row_updates in batch_updates.items():
+            written = repository.apply_updates(sheet_name, row_updates)
+            total_written += written
+            logger.info(
+                "書き込みました",
+                extra={"context": {"sheet": sheet_name, "batch": batch_index, "cells": written}},
+            )
 
     logger.info(
-        "短縮名の生成が終わりました",
-        extra={"context": {"batches": len(batches), "skipped_batches": skipped_batches}},
+        "完了しました",
+        extra={
+            "context": {
+                "batches": len(batches),
+                "skipped_batches": skipped_batches,
+                "cells": total_written,
+            }
+        },
     )
-
-    if args.dry_run:
-        return 0
-
-    total_written = 0
-    for sheet_name, row_updates in all_updates.items():
-        written = repository.apply_updates(sheet_name, row_updates)
-        total_written += written
-        logger.info(
-            "書き込みました",
-            extra={"context": {"sheet": sheet_name, "cells": written}},
-        )
-
-    logger.info("完了しました", extra={"context": {"cells": total_written}})
     return 0
 
 

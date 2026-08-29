@@ -69,3 +69,21 @@ class TestComplete:
 
         with pytest.raises(ClaudeCliError):
             ClaudeCli().complete("プロンプト")
+
+    def test_claudeバイナリが無ければ例外(self, monkeypatch) -> None:
+        def fake_run(*a, **k):
+            raise FileNotFoundError("claude")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(ClaudeCliError):
+            ClaudeCli().complete("プロンプト")
+
+    def test_その他のOSErrorでも例外(self, monkeypatch) -> None:
+        def fake_run(*a, **k):
+            raise OSError("fork失敗")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(ClaudeCliError):
+            ClaudeCli().complete("プロンプト")
