@@ -46,14 +46,24 @@ Amazon の ASIN／商品URL からリサーチシートを自動で埋める Goo
 
 月間販売数（Keepa の `monthlySold`）は **AB列 `販売数/FBA数` と J列 `数量` の両方**へ書く。
 J列は本来 I列「金額」の隣にある1688の仕入ロット数の欄だが、2026-08-29 にユーザー方針が変わり
-両方へ書くことになった。既存の手入力値は空欄判定を通すため上書きしない（`--overwrite` 時のみ例外）。
+両方へ書くことになった。**J列の既存値（手入力の仕入ロット数）は Python・GAS 両方の経路で保護される**が、
+仕組みは経路ごとに異なる。
+
+- Python (`fetch_products.py`): `RowUpdatePlanner` が `needs_fetch` / `_is_blank` で
+  書き込み対象列すべての空欄判定を行う。`--overwrite` を付けない限り、既存値がある列は
+  J列に限らずどれも上書きしない
+- GAS (`fetchAndWriteToSheet`): 他の列（商品名・価格等）は再取得のたびに最新値で
+  無条件に上書きするのが元々の仕様。**J列だけ** `SheetDataReader.gs` の
+  `updateRowByNumber` が `PROTECTED_EXISTING_VALUE_HEADERS`（`'数量'` のみ）と
+  `isBlankCellValue` で個別に保護する。空とみなすのは `null`/`undefined`/空文字/空白のみで、
+  既存セルが `0` のときは「値がある」として保護する（新しく書く値が0の場合は書ける）
 
 経緯（AB列のヘッダー正規化）: 2026-08-22 に「正規化は入れない」と判断したが、
 その結果 monthlySold がどの列にも入らなくなったため 2026-08-25 に方針を戻した。
 
 経緯（J列への書き込み可否）: 2026-08-24 に一度 J列へも書く実装を入れたが、
 手入力値を壊す懸念からいったん外し AB列のみに絞った。2026-08-29 に方針変更で
-両方へ書く形に戻した。
+両方へ書く形に戻し、GAS側にはJ列専用の既存値保護（上記）を追加した。
 
 ### 利益(AP)・利益率(AQ) は既存行からコピーする
 
@@ -137,11 +147,11 @@ GAS には実行環境が無いので、テスト関数を `.gs` に同梱して
 { echo 'const Logger = { log: console.log };'; cat Asin.gs; echo 'testAsinParse();'; } > /tmp/t.js && node /tmp/t.js
 
 # Apps Script エディタ
-testAsinParse() / testKeepaMainImage() / testFindTemplateRowOffset()
+testAsinParse() / testKeepaMainImage() / testFindTemplateRowOffset() / testNormalizeHeader() / testIsBlankCellValue()
 ```
 
 `SpreadsheetApp` に依存する部分はモックできないため、判定ロジックを純粋関数に切り出してテストする
-（`findTemplateRowOffset` がその例）。
+（`findTemplateRowOffset` や、J列の既存値保護に使う `isBlankCellValue`（`SheetDataReader.gs`）がその例）。
 
 ## デプロイ
 

@@ -30,6 +30,45 @@ function testNormalizeHeader() {
   Logger.log(failed === 0 ? `OK: ${cases.length}件すべて成功` : `NG: ${failed}件失敗`);
 }
 
+// '数量' 列は仕入ロット数の手入力欄と共用のため、既存値があるときだけ書き込みをスキップする
+// 判定に使う。null/undefined/空文字/空白のみを空とみなす。0は「本当に0」がありえる有効な値
+// なので空とはみなさない（既存セルが0なら保護対象、書き込む新しい値が0でも書ける）。
+function isBlankCellValue(value) {
+  if (value === null || value === undefined) {
+    return true;
+  }
+  return String(value).trim() === '';
+}
+
+function testIsBlankCellValue() {
+  const cases = [
+    ['nullは空', null, true],
+    ['undefinedは空', undefined, true],
+    ['空文字は空', '', true],
+    ['空白のみは空', '   ', true],
+    ['0は空ではない', 0, false],
+    ['文字列の0も空ではない', '0', false],
+    ['通常の数値は空ではない', 50, false],
+    ['通常の文字列は空ではない', '50個', false]
+  ];
+
+  let failed = 0;
+
+  cases.forEach(([name, input, expected]) => {
+    const actual = isBlankCellValue(input);
+    if (actual !== expected) {
+      failed += 1;
+      Logger.log(`NG: ${name} = ${JSON.stringify(actual)} (期待値: ${JSON.stringify(expected)})`);
+    }
+  });
+
+  Logger.log(failed === 0 ? `OK: ${cases.length}件すべて成功` : `NG: ${failed}件失敗`);
+}
+
+// '数量' 列だけ既存値保護の対象にする。他の列（商品名・価格等）は再取得のたびに
+// 最新値で上書きするのが fetchAndWriteToSheet の期待動作であり、対象を広げてはいけない。
+const PROTECTED_EXISTING_VALUE_HEADERS = ['数量'];
+
 /**
  * スプレッドシートの行データを表すクラス
  * ASIN列のみを保持
@@ -265,6 +304,14 @@ class SheetDataReader {
       }
 
       const cell = this.sheet.getRange(rowNumber, columnIndex + 1);
+
+      // '数量' 列は仕入ロット数の手入力欄と共用。既存値があれば上書きしない
+      // （0は有効な既存値として保護対象。空欄のときだけ書き込む）
+      if (PROTECTED_EXISTING_VALUE_HEADERS.includes(headerName) && !isBlankCellValue(cell.getValue())) {
+        Logger.log(`行 ${rowNumber}: "${headerName}" は既存値があるため上書きしない`);
+        return;
+      }
+
       cell.setValue(data[headerName]);
     });
   }
