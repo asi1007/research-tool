@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 import pytest
@@ -91,3 +92,19 @@ class TestFindAsins:
         asins = _client(session).find_asins(DiscoveryCriteria(), NOW)
 
         assert [str(asin) for asin in asins] == ["B000000001"]
+
+    def test_max_pagesの上限で打ち切り実際に叩いたページ数だけログに残す(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        first = FakeResponse(200, {"asinList": [f"B00000{n:04d}" for n in range(50)], "totalResults": 999})
+        second = FakeResponse(200, {"asinList": [f"B00001{n:04d}" for n in range(50)], "totalResults": 999})
+        session = FakePostSession([first, second])
+
+        with caplog.at_level(logging.INFO, logger="src.infrastructure.keepa_client"):
+            asins = _client(session).find_asins(DiscoveryCriteria(), NOW, max_pages=2)
+
+        assert len(session.calls) == 2
+        assert len(asins) == 100
+
+        record = next(r for r in caplog.records if r.message == "Product Finder で候補を取得しました")
+        assert record.context == {"count": 100, "pages": 2}

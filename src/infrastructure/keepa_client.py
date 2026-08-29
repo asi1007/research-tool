@@ -95,9 +95,11 @@ class KeepaClient:
         found: list[Asin] = []
         received = 0
         page = 0
+        pages_fetched = 0
 
         while page < max_pages:
             payload = self._query_page(criteria, now, page)
+            pages_fetched += 1
             raw_asins = payload.get("asinList") or []
             if not raw_asins:
                 break
@@ -112,7 +114,7 @@ class KeepaClient:
 
         logger.info(
             "Product Finder で候補を取得しました",
-            extra={"context": {"count": len(found), "pages": page + 1}},
+            extra={"context": {"count": len(found), "pages": pages_fetched}},
         )
         return found
 
