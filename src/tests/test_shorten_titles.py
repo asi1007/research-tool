@@ -1,6 +1,7 @@
 from src.usecases.shorten_titles import (
     MAX_SHORT_TITLE_LENGTH,
     REASON_EMPTY,
+    REASON_NOT_A_STRING,
     REASON_TOO_LONG,
     DroppedItem,
     TitleTarget,
@@ -302,6 +303,50 @@ class TestParseBatchResponse:
         assert 7 not in result.short_titles
         assert len(result.dropped) == 1
         assert result.dropped[0].index == 7
+
+    def test_short_titleがnullなら項目だけ落ちて残りは反映される(self) -> None:
+        text = (
+            '[{"index": 0, "short_title": "商品A"}, '
+            '{"index": 1, "short_title": null}, '
+            '{"index": 2, "short_title": "商品C"}]'
+        )
+
+        result = parse_batch_response(text, batch_size=3)
+
+        assert result.error is None
+        assert result.short_titles == {0: "商品A", 2: "商品C"}
+        assert 1 not in result.short_titles
+        assert len(result.dropped) == 1
+        assert result.dropped[0].index == 1
+        assert result.dropped[0].reason == REASON_NOT_A_STRING
+
+    def test_short_titleが数値なら項目だけ落ちて残りは反映される(self) -> None:
+        text = (
+            '[{"index": 0, "short_title": "商品A"}, '
+            '{"index": 1, "short_title": 123}, '
+            '{"index": 2, "short_title": "商品C"}]'
+        )
+
+        result = parse_batch_response(text, batch_size=3)
+
+        assert result.error is None
+        assert result.short_titles == {0: "商品A", 2: "商品C"}
+        assert 1 not in result.short_titles
+        assert len(result.dropped) == 1
+        assert result.dropped[0].index == 1
+        assert result.dropped[0].reason == REASON_NOT_A_STRING
+
+    def test_short_titleが配列でも項目だけ落ちて残りは反映される(self) -> None:
+        text = (
+            '[{"index": 0, "short_title": "商品A"}, '
+            '{"index": 1, "short_title": ["商品B"]}]'
+        )
+
+        result = parse_batch_response(text, batch_size=2)
+
+        assert result.error is None
+        assert result.short_titles == {0: "商品A"}
+        assert result.dropped[0].reason == REASON_NOT_A_STRING
 
     def test_複数件落ちても残りはすべて反映される(self) -> None:
         text = (

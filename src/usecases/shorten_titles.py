@@ -15,6 +15,7 @@ TITLE_BUY_CODE = "TITLE_BUY"
 
 REASON_TOO_LONG = f"短縮名が{MAX_SHORT_TITLE_LENGTH}文字を超えています"
 REASON_EMPTY = "短縮名が空です"
+REASON_NOT_A_STRING = "not_a_string"
 
 
 @dataclass(frozen=True)
@@ -133,7 +134,14 @@ def parse_batch_response(response_text: str, batch_size: int) -> BatchParseResul
             return BatchParseResult({}, f"indexが重複しています: {index}")
         seen_indexes.add(index)
 
-        short_title = str(item["short_title"]).strip()
+        raw_short_title = item["short_title"]
+        if not isinstance(raw_short_title, str):
+            dropped.append(
+                DroppedItem(index=index, short_title=repr(raw_short_title), reason=REASON_NOT_A_STRING)
+            )
+            continue
+
+        short_title = raw_short_title.strip()
         if not short_title:
             dropped.append(DroppedItem(index=index, short_title=short_title, reason=REASON_EMPTY))
             continue
