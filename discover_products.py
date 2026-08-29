@@ -50,8 +50,7 @@ def fetch_command(sheet: str) -> list[str]:
 
 
 def collect_known(repository: GoogleSheetRepository) -> set[str]:
-    sheets = {title: repository.read_values(title) for title in repository.sheet_titles()}
-    return known_asins(sheets)
+    return known_asins(repository.read_all_values())
 
 
 def run(args: argparse.Namespace) -> int:

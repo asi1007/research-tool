@@ -4,6 +4,7 @@ import logging
 
 import gspread
 from google.oauth2.service_account import Credentials
+from gspread.utils import absolute_range_name
 
 from src.infrastructure.column_mapper import normalize_header
 
@@ -65,6 +66,17 @@ class GoogleSheetRepository:
     def read_values(self, sheet_name: str) -> list[list]:
         worksheet = self.spreadsheet.worksheet(sheet_name)
         return worksheet.get_values(value_render_option=FORMULA_RENDER_OPTION)
+
+    def read_all_values(self) -> dict[str, list[list]]:
+        titles = self.sheet_titles()
+        ranges = [absolute_range_name(title) for title in titles]
+        response = self.spreadsheet.values_batch_get(
+            ranges, params={"valueRenderOption": FORMULA_RENDER_OPTION}
+        )
+        return {
+            title: value_range.get("values", [])
+            for title, value_range in zip(titles, response["valueRanges"])
+        }
 
     def ensure_rows(self, sheet_name: str, last_row_number: int) -> int:
         worksheet = self.spreadsheet.worksheet(sheet_name)

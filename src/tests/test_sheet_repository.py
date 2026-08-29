@@ -92,3 +92,46 @@ class TestReadTableRendering:
         planner = RowUpdatePlanner(ColumnMapper(headers), overwrite=False)
 
         assert planner.needs_fetch(row) is False
+
+
+class FakeTitledWorksheet:
+    def __init__(self, title: str) -> None:
+        self.title = title
+
+
+class FakeBatchGetSpreadsheet:
+    def __init__(self, titles: list[str], value_ranges: list[dict]) -> None:
+        self.titles = titles
+        self.value_ranges = value_ranges
+        self.calls: list[tuple[list[str], dict | None]] = []
+
+    def worksheets(self) -> list[FakeTitledWorksheet]:
+        return [FakeTitledWorksheet(title) for title in self.titles]
+
+    def values_batch_get(self, ranges: list[str], params: dict | None = None) -> dict:
+        self.calls.append((ranges, params))
+        return {"valueRanges": self.value_ranges}
+
+
+class TestReadAllValues:
+    def test_タブ数によらず一括取得は1回のリクエストになる(self) -> None:
+        from src.infrastructure.sheet_repository import FORMULA_RENDER_OPTION, GoogleSheetRepository
+
+        spreadsheet = FakeBatchGetSpreadsheet(
+            titles=["優先", "候補", "自動調査"],
+            value_ranges=[
+                {"values": [["a"]]},
+                {"values": [["b"]]},
+                {},  # 空タブは values キー自体が無い
+            ],
+        )
+        repository = GoogleSheetRepository.__new__(GoogleSheetRepository)
+        repository.spreadsheet = spreadsheet
+
+        result = repository.read_all_values()
+
+        assert len(spreadsheet.calls) == 1
+        ranges, params = spreadsheet.calls[0]
+        assert ranges == ["'優先'", "'候補'", "'自動調査'"]
+        assert params == {"valueRenderOption": FORMULA_RENDER_OPTION}
+        assert result == {"優先": [["a"]], "候補": [["b"]], "自動調査": []}
