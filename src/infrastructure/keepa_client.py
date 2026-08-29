@@ -11,6 +11,7 @@ import requests
 from src.domain.entities.product_info import ProductInfo
 from src.domain.entities.product_size import ProductSize
 from src.domain.value_objects.asin import Asin
+from src.domain.value_objects.discovery_criteria import DiscoveryCriteria
 
 KEEPA_EPOCH = datetime(2011, 1, 1, tzinfo=timezone.utc)
 JAPAN_DOMAIN = 5
@@ -84,6 +85,78 @@ class KeepaClient:
         self.tokens_left = payload.get("tokensLeft", self.tokens_left)
         refill_rate = payload.get("refillRate")
         return refill_rate if isinstance(refill_rate, int) and refill_rate > 0 else None
+
+    def find_asins(
+        self,
+        criteria: DiscoveryCriteria,
+        now: datetime,
+        max_pages: int = 20,
+    ) -> list[Asin]:
+        found: list[Asin] = []
+        received = 0
+        page = 0
+
+        while page < max_pages:
+            payload = self._query_page(criteria, now, page)
+            raw_asins = payload.get("asinList") or []
+            if not raw_asins:
+                break
+
+            received += len(raw_asins)
+            found.extend(asin for asin in map(Asin.parse, raw_asins) if asin is not None)
+
+            total = payload.get("totalResults") or 0
+            if received >= total:
+                break
+            page += 1
+
+        logger.info(
+            "Product Finder で候補を取得しました",
+            extra={"context": {"count": len(found), "pages": page + 1}},
+        )
+        return found
+
+    def _query_page(self, criteria: DiscoveryCriteria, now: datetime, page: int) -> dict:
+        for attempt in range(MAX_TOKEN_RETRIES):
+            response = self.session.post(
+                f"{self.base_url}/query",
+                params={"key": self.api_key, "domain": JAPAN_DOMAIN},
+                json=criteria.selection(now, page=page),
+                timeout=self.timeout,
+            )
+            payload = self._decode(response)
+            self.tokens_left = payload.get("tokensLeft", self.tokens_left)
+
+            if self._is_token_depleted(response, payload):
+                self._wait_for_query_refill(payload, page, attempt)
+                continue
+
+            if response.status_code != 200:
+                raise KeepaApiError(
+                    f"Keepa Product Finder error: {response.status_code} - {response.text[:200]}"
+                )
+
+            return payload
+
+        raise KeepaApiError(f"Keepa token exhausted after {MAX_TOKEN_RETRIES} retries: page={page}")
+
+    def _wait_for_query_refill(self, payload: dict, page: int, attempt: int) -> None:
+        refill_ms = payload.get("refillIn")
+        seconds = (refill_ms / 1000) if refill_ms else DEFAULT_TOKEN_WAIT_SECONDS
+        seconds = min(seconds, MAX_TOKEN_WAIT_SECONDS)
+
+        logger.warning(
+            "Product Finder のトークンが枯渇したため補充を待機",
+            extra={
+                "context": {
+                    "page": page,
+                    "wait_seconds": seconds,
+                    "tokens_left": payload.get("tokensLeft"),
+                    "attempt": attempt + 1,
+                }
+            },
+        )
+        self.sleep(seconds)
 
     @staticmethod
     def _decode(response: object) -> dict:
