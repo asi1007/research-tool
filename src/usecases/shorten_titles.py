@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.infrastructure.column_codes import ColumnCodes
 
@@ -13,6 +13,9 @@ ASIN_CODE = "ASIN_SELL"
 TITLE_SELL_CODE = "TITLE_SELL"
 TITLE_BUY_CODE = "TITLE_BUY"
 
+REASON_TOO_LONG = f"短縮名が{MAX_SHORT_TITLE_LENGTH}文字を超えています"
+REASON_EMPTY = "短縮名が空です"
+
 
 @dataclass(frozen=True)
 class TitleTarget:
@@ -20,6 +23,7 @@ class TitleTarget:
     row_number: int
     title: str
     title_buy_column: int
+    asin: str = ""
 
 
 def _cell(row: list, index: int) -> str:
@@ -51,6 +55,7 @@ def extract_targets(sheet_values: dict[str, list[list]]) -> list[TitleTarget]:
                     row_number=HEADER_ROWS + offset + 1,
                     title=title,
                     title_buy_column=title_buy_index,
+                    asin=_cell(row, asin_index),
                 )
             )
 
@@ -85,9 +90,17 @@ def build_prompt(titles: list[str]) -> str:
 
 
 @dataclass(frozen=True)
+class DroppedItem:
+    index: int
+    short_title: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class BatchParseResult:
     short_titles: dict[int, str]
     error: str | None
+    dropped: list[DroppedItem] = field(default_factory=list)
 
 
 def parse_batch_response(response_text: str, batch_size: int) -> BatchParseResult:
@@ -105,6 +118,9 @@ def parse_batch_response(response_text: str, batch_size: int) -> BatchParseResul
         )
 
     parsed: dict[int, str] = {}
+    dropped: list[DroppedItem] = []
+    seen_indexes: set[int] = set()
+
     for item in data:
         if not isinstance(item, dict) or "index" not in item or "short_title" not in item:
             return BatchParseResult({}, f"要素の形式が不正です: {item!r}")
@@ -113,23 +129,24 @@ def parse_batch_response(response_text: str, batch_size: int) -> BatchParseResul
         if not isinstance(index, int) or isinstance(index, bool) or not (0 <= index < batch_size):
             return BatchParseResult({}, f"indexが不正です: {index!r}")
 
-        if index in parsed:
+        if index in seen_indexes:
             return BatchParseResult({}, f"indexが重複しています: {index}")
+        seen_indexes.add(index)
 
         short_title = str(item["short_title"]).strip()
         if not short_title:
-            return BatchParseResult({}, f"短縮名が空です: index={index}")
+            dropped.append(DroppedItem(index=index, short_title=short_title, reason=REASON_EMPTY))
+            continue
         if len(short_title) > MAX_SHORT_TITLE_LENGTH:
-            return BatchParseResult(
-                {}, f"10文字を超える短縮名が含まれています: index={index} value={short_title}"
-            )
+            dropped.append(DroppedItem(index=index, short_title=short_title, reason=REASON_TOO_LONG))
+            continue
 
         parsed[index] = short_title
 
-    if len(parsed) != batch_size:
+    if len(seen_indexes) != batch_size:
         return BatchParseResult({}, "indexの抜けがあります")
 
-    return BatchParseResult(parsed, None)
+    return BatchParseResult(parsed, None, dropped)
 
 
 Updates = dict[str, dict[int, dict[int, object]]]

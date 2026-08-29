@@ -97,9 +97,29 @@ def run(
             skipped_batches += 1
             continue
 
+        for dropped in result.dropped:
+            target = batch[dropped.index]
+            logger.warning(
+                "短縮名を検証できなかったためこの行はスキップします(次回また対象になります)",
+                extra={
+                    "context": {
+                        "batch": batch_index,
+                        "sheet": target.sheet,
+                        "row": target.row_number,
+                        "asin": target.asin,
+                        "short_title": dropped.short_title,
+                        "length": len(dropped.short_title),
+                        "reason": dropped.reason,
+                    }
+                },
+            )
+
         if args.dry_run:
             for index, target in enumerate(batch):
-                print(f"{target.sheet}\t{target.row_number}\t{target.title}\t→\t{result.short_titles[index]}")
+                short_title = result.short_titles.get(index)
+                if short_title is None:
+                    continue
+                print(f"{target.sheet}\t{target.row_number}\t{target.title}\t→\t{short_title}")
             continue
 
         batch_updates = build_updates(batch, result.short_titles)
