@@ -21,9 +21,11 @@ class FakeKeepa:
     def __init__(self, found: list[Asin]) -> None:
         self.found = found
         self.calls = 0
+        self.criteria: list[object] = []
 
     def find_asins(self, criteria, now) -> list[Asin]:
         self.calls += 1
+        self.criteria.append(criteria)
         return self.found
 
 
@@ -34,6 +36,10 @@ class FakeRepository:
         self.ensure_rows_calls: list[tuple[str, int]] = []
         self.apply_updates_calls: list[tuple[str, dict]] = []
         self.read_values_calls: list[str] = []
+        self.titles = ["候補", "自動調査1000円以下", "自動調査1000円-2000円"]
+
+    def sheet_titles(self) -> list[str]:
+        return self.titles
 
     def read_all_values(self) -> dict[str, list[list]]:
         return {"候補": [["んh", "ASIN_SELL"], ["", "ASIN"], ["", ""]] + [["", asin] for asin in self.known]}
@@ -52,7 +58,13 @@ class FakeRepository:
 
 
 def _args(**overrides: object) -> argparse.Namespace:
-    base = {"limit": None, "dry_run": False, "no_fetch": False}
+    base = {
+        "limit": None,
+        "dry_run": False,
+        "no_fetch": False,
+        "sheet": None,
+        "all_sheets": False,
+    }
     base.update(overrides)
     return argparse.Namespace(**base)
 
@@ -116,3 +128,74 @@ class TestRun:
         assert result == 0
         assert len(repository.apply_updates_calls) == 1
         assert called["subprocess"] is False
+
+
+class TestBandSelection:
+    def test_既定は1000円以下タブで1円から1000円を探す(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000001")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record(recorded := []))
+
+        run(_args(), repository=repository, keepa=keepa)
+
+        criteria = keepa.criteria[0]
+        assert (criteria.min_price_yen, criteria.max_price_yen) == (1, 1000)
+        assert repository.apply_updates_calls[0][0] == "自動調査1000円以下"
+        assert recorded[0][2:] == ["--sheet", "自動調査1000円以下", "--interval", "auto"]
+
+    def test_タブ名から価格帯を読み取って探す(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000002")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record(recorded := []))
+
+        run(_args(sheet="自動調査1000円-2000円"), repository=repository, keepa=keepa)
+
+        criteria = keepa.criteria[0]
+        assert (criteria.min_price_yen, criteria.max_price_yen) == (1001, 2000)
+        assert repository.apply_updates_calls[0][0] == "自動調査1000円-2000円"
+        assert recorded[0][2:] == ["--sheet", "自動調査1000円-2000円", "--interval", "auto"]
+
+    def test_価格帯を読めないタブ名は実行せず1を返す(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000003")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record([]))
+
+        result = run(_args(sheet="候補"), repository=repository, keepa=keepa)
+
+        assert result == 1
+        assert keepa.calls == 0
+        assert repository.apply_updates_calls == []
+
+    def test_allは自動調査タブを価格の安い順に処理する(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000004")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record(recorded := []))
+
+        result = run(_args(all_sheets=True), repository=repository, keepa=keepa)
+
+        assert result == 0
+        assert keepa.calls == 2
+        assert [
+            (criteria.min_price_yen, criteria.max_price_yen) for criteria in keepa.criteria
+        ] == [(1, 1000), (1001, 2000)]
+        assert [command[3] for command in recorded] == [
+            "自動調査1000円以下",
+            "自動調査1000円-2000円",
+        ]
+
+    def test_allのとき前のタブで積んだASINは次のタブへ積まない(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000005")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record([]))
+
+        run(_args(all_sheets=True), repository=repository, keepa=keepa)
+
+        assert [call[0] for call in repository.apply_updates_calls] == ["自動調査1000円以下"]
+
+
+def _record(recorded: list[list[str]]):
+    def fake_run(command, **kwargs) -> subprocess.CompletedProcess:
+        recorded.append(command)
+        return subprocess.CompletedProcess(command, 0)
+
+    return fake_run

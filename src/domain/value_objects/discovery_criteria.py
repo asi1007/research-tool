@@ -17,6 +17,7 @@ EXCLUDED_ROOT_CATEGORIES: tuple[int, ...] = (
     2351649051,  # Prime Video
     2381130051,  # アプリ＆ゲーム
     4788676051,  # Alexaスキル
+    52374051,    # ビューティー（化粧品は薬機法で輸入できない。メイク道具等の雑貨も巻き添えで落ちる）
     637392,      # PCソフト
     637394,      # ゲーム
     2320455051,  # ファイナンス
@@ -38,6 +39,7 @@ def to_keepa_minutes(moment: datetime) -> int:
 
 @dataclass(frozen=True)
 class DiscoveryCriteria:
+    min_price_yen: int = 1
     max_price_yen: int = 1000
     min_monthly_sold: int = 1000
     max_age_days: int = 180
@@ -45,13 +47,17 @@ class DiscoveryCriteria:
     per_page: int = MIN_PER_PAGE
 
     def __post_init__(self) -> None:
+        if self.min_price_yen > self.max_price_yen:
+            raise ValueError(
+                f"価格の下限が上限を超えている: {self.min_price_yen} > {self.max_price_yen}"
+            )
         if self.per_page < MIN_PER_PAGE:
             raise ValueError(f"perPage は {MIN_PER_PAGE} 以上にする（Keepa が 400 を返す）")
 
     def selection(self, now: datetime, page: int = 0) -> dict:
         listed_since = now - timedelta(days=self.max_age_days)
         return {
-            "current_NEW_gte": 1,
+            "current_NEW_gte": self.min_price_yen,
             "current_NEW_lte": self.max_price_yen,
             "monthlySold_gte": self.min_monthly_sold,
             "listedSince_gte": to_keepa_minutes(listed_since),

@@ -6,7 +6,6 @@ from datetime import date
 from src.domain.value_objects.asin import Asin
 from src.infrastructure.column_codes import ColumnCodes
 
-DISCOVERY_SHEET = "自動調査"
 ASIN_CODE = "ASIN_SELL"
 NOTE_CODE = "NOTE_BUY_OTHER2"
 NOTE_PREFIX = "自動調査"

@@ -9,13 +9,17 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from src.domain.value_objects.discovery_criteria import DiscoveryCriteria
+from src.domain.value_objects.asin import Asin
+from src.domain.value_objects.discovery_band import (
+    DEFAULT_DISCOVERY_SHEET,
+    DiscoveryBand,
+    discovery_sheets,
+)
 from src.infrastructure.env import require_env
 from src.infrastructure.keepa_client import KeepaClient
 from src.infrastructure.logging_config import configure_logging
 from src.infrastructure.sheet_repository import GoogleSheetRepository
 from src.usecases.discover_products import (
-    DISCOVERY_SHEET,
     known_asins,
     plan_append,
     select_new_asins,
@@ -28,9 +32,18 @@ logger = logging.getLogger("discover_products")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Keepaで発売半年以内・月販1000個以上・1000円以下の商品を探し自動調査タブへ積む"
+        description="Keepaで発売半年以内・月販1000個以上の商品を探し自動調査タブへ積む（価格帯はタブ名から読む）"
     )
-    parser.add_argument("--limit", type=int, help="追記する件数の上限")
+    parser.add_argument(
+        "--sheet",
+        help=f"対象タブ（既定: {DEFAULT_DISCOVERY_SHEET}）。価格帯はタブ名から読む",
+    )
+    parser.add_argument(
+        "--all-sheets",
+        action="store_true",
+        help="価格帯を読めるすべての自動調査タブを安い順に処理する",
+    )
+    parser.add_argument("--limit", type=int, help="追記する件数の上限（タブごと）")
     parser.add_argument("--dry-run", action="store_true", help="書き込まず件数だけ表示する")
     parser.add_argument("--no-fetch", action="store_true", help="商品情報の取得を続けて行わない")
     parser.add_argument("--debug", action="store_true", help="DEBUGログを出力する")
@@ -72,12 +85,53 @@ def run(
     keepa = keepa or build_keepa()
     repository = repository or build_repository()
 
-    found = keepa.find_asins(DiscoveryCriteria(), datetime.now(timezone.utc))
-    fresh = select_new_asins(found, collect_known(repository), limit=args.limit)
+    try:
+        bands = resolve_bands(args, repository)
+    except ValueError as error:
+        logger.error("対象タブを決められません", extra={"context": {"error": str(error)}})
+        return 1
+
+    known = collect_known(repository)
+    exit_code = 0
+
+    for band in bands:
+        band_exit_code = discover_band(args, band, repository, keepa, known)
+        exit_code = exit_code or band_exit_code
+
+    return exit_code
+
+
+def resolve_bands(
+    args: argparse.Namespace, repository: GoogleSheetRepository
+) -> list[DiscoveryBand]:
+    if args.all_sheets:
+        sheets = discovery_sheets(repository.sheet_titles())
+        return [DiscoveryBand.from_sheet_name(sheet) for sheet in sheets]
+    return [DiscoveryBand.from_sheet_name(args.sheet or DEFAULT_DISCOVERY_SHEET)]
+
+
+def discover_band(
+    args: argparse.Namespace,
+    band: DiscoveryBand,
+    repository: GoogleSheetRepository,
+    keepa: KeepaClient,
+    known: set[str],
+) -> int:
+    found = keepa.find_asins(band.criteria(), datetime.now(timezone.utc))
+    fresh = select_new_asins(found, known, limit=args.limit)
+    known.update(str(asin) for asin in fresh)
 
     logger.info(
         "発見しました",
-        extra={"context": {"found": len(found), "new": len(fresh)}},
+        extra={
+            "context": {
+                "sheet": band.sheet,
+                "min_price_yen": band.min_price_yen,
+                "max_price_yen": band.max_price_yen,
+                "found": len(found),
+                "new": len(fresh),
+            }
+        },
     )
     for asin in fresh:
         print(f"{asin} {asin.amazon_url}")
@@ -86,20 +140,26 @@ def run(
         return 0
 
     if fresh:
-        values = repository.read_values(DISCOVERY_SHEET)
-        plan = plan_append(values, fresh, date.today())
-        if plan.rows_to_add:
-            repository.ensure_rows(DISCOVERY_SHEET, max(plan.updates))
-        written = repository.apply_updates(DISCOVERY_SHEET, plan.updates)
-
-        logger.info(
-            "自動調査タブへ追記しました",
-            extra={"context": {"cells": written, "rows": len(plan.updates)}},
-        )
+        append_asins(band.sheet, fresh, repository)
 
     if args.no_fetch:
         return 0
-    return subprocess.run(fetch_command(DISCOVERY_SHEET), cwd=PROJECT_ROOT, check=False).returncode
+    return subprocess.run(fetch_command(band.sheet), cwd=PROJECT_ROOT, check=False).returncode
+
+
+def append_asins(
+    sheet: str, asins: list[Asin], repository: GoogleSheetRepository
+) -> None:
+    values = repository.read_values(sheet)
+    plan = plan_append(values, asins, date.today())
+    if plan.rows_to_add:
+        repository.ensure_rows(sheet, max(plan.updates))
+    written = repository.apply_updates(sheet, plan.updates)
+
+    logger.info(
+        "自動調査タブへ追記しました",
+        extra={"context": {"sheet": sheet, "cells": written, "rows": len(plan.updates)}},
+    )
 
 
 def main() -> int:

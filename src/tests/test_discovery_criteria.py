@@ -34,13 +34,15 @@ class TestSelection:
         assert selection["availabilityAmazon"] == [-1]
         assert selection["productType"] == [0]
 
-    def test_除外カテゴリは18件で本と食品を含む(self) -> None:
-        assert len(EXCLUDED_ROOT_CATEGORIES) == 18
+    def test_除外カテゴリは19件で本と食品を含む(self) -> None:
+        assert len(EXCLUDED_ROOT_CATEGORIES) == 19
         assert 465392 in EXCLUDED_ROOT_CATEGORIES
         assert 57239051 in EXCLUDED_ROOT_CATEGORIES
 
-    def test_ビューティーとパソコン周辺は除外しない(self) -> None:
-        assert 52374051 not in EXCLUDED_ROOT_CATEGORIES
+    def test_化粧品を含むビューティーは除外する(self) -> None:
+        assert 52374051 in EXCLUDED_ROOT_CATEGORIES
+
+    def test_パソコン周辺は除外しない(self) -> None:
         assert 2127209051 not in EXCLUDED_ROOT_CATEGORIES
 
     def test_月販の降順で取り出す(self) -> None:
@@ -53,3 +55,15 @@ class TestSelection:
     def test_perPageが50未満なら作れない(self) -> None:
         with pytest.raises(ValueError, match="perPage"):
             DiscoveryCriteria(per_page=10)
+
+
+class TestPriceRange:
+    def test_価格の下限を指定できる(self) -> None:
+        selection = DiscoveryCriteria(min_price_yen=1001, max_price_yen=2000).selection(NOW)
+
+        assert selection["current_NEW_gte"] == 1001
+        assert selection["current_NEW_lte"] == 2000
+
+    def test_下限が上限を超えるなら作れない(self) -> None:
+        with pytest.raises(ValueError, match="価格"):
+            DiscoveryCriteria(min_price_yen=2001, max_price_yen=2000)
