@@ -146,6 +146,9 @@ Amazon は販売時に必ず販売手数料を取るため 0 は正当な値に�
   プラモ・鉄道模型まで消える（`2189358051` / `10345415051`）
 - **A列の `d` は消すだけでは足りない。** `drop_marked.py` で**候補外タブへ移してから**削除する。
   行を消しただけだと既知ASINから外れ、翌朝の定期実行でまた積まれる
+- **検索ワード(M)と広告単価(Y)は Amazon Ads API の推奨キーワードから入れる。** 資格情報は
+  `data-engineer/dwld-ad-data/.env` を `AD_CREDENTIALS_ENV` 経由で借りる。**`bid` は円の1/100**（9700→97円）。
+  **N列『検索数』は公式APIに存在しないため未自動化**
 - **`releaseDate` は 0 の商品が大半で使えない。** 発売日の判定は `listedSince`（Amazon 出品日）
 - **Amazon 本体の除外は `availabilityAmazon: [-1]`。** `current_AMAZON` の範囲指定は 0件になる
 - **`perPage` は 50 未満だと 400 エラー。** 1回 11トークン

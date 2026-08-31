@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 import discover_products
-from discover_products import fetch_command, run, shorten_command
+from discover_products import fetch_command, keyword_command, run, shorten_command
 from src.domain.entities.product_info import ProductInfo
 from src.domain.value_objects.asin import Asin
 
@@ -17,6 +17,15 @@ class TestFetchCommand:
         assert command[0] == sys.executable
         assert command[1].endswith("fetch_products.py")
         assert command[2:] == ["--sheet", "自動調査", "--interval", "auto"]
+
+
+class TestKeywordCommand:
+    def test_同じvenvのpythonでfill_keywordsを呼ぶ(self) -> None:
+        command = keyword_command("自動調査")
+
+        assert command[0] == sys.executable
+        assert command[1].endswith("fill_keywords.py")
+        assert command[2:] == ["--sheet", "自動調査"]
 
 
 class TestShortenCommand:
@@ -84,6 +93,7 @@ def _args(**overrides: object) -> argparse.Namespace:
         "dry_run": False,
         "no_fetch": False,
         "no_shorten": False,
+        "no_keywords": False,
         "sheet": None,
         "all_sheets": False,
     }
@@ -133,7 +143,7 @@ class TestRun:
         assert result == 0
         assert repository.apply_updates_calls == []
         assert repository.ensure_rows_calls == []
-        assert len(recorded_commands) == 2
+        assert len(recorded_commands) == 3
 
     def test_no_fetchのときsubprocess_runが呼ばれない(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000009")])
@@ -163,6 +173,19 @@ class TestShortenTitles:
         assert [Path(command[1]).name for command in recorded] == [
             "fetch_products.py",
             "shorten_titles.py",
+            "fill_keywords.py",
+        ]
+
+    def test_no_keywordsのとき検索ワードは書き込まない(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000014")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record(recorded := []))
+
+        run(_args(no_keywords=True), repository=repository, keepa=keepa)
+
+        assert [Path(command[1]).name for command in recorded] == [
+            "fetch_products.py",
+            "shorten_titles.py",
         ]
 
     def test_no_shortenのとき短縮名は書き込まない(self, monkeypatch) -> None:
@@ -172,7 +195,10 @@ class TestShortenTitles:
 
         run(_args(no_shorten=True), repository=repository, keepa=keepa)
 
-        assert [Path(command[1]).name for command in recorded] == ["fetch_products.py"]
+        assert [Path(command[1]).name for command in recorded] == [
+            "fetch_products.py",
+            "fill_keywords.py",
+        ]
 
     def test_no_fetchのとき短縮名も書き込まない(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000012")])
@@ -200,6 +226,7 @@ class TestShortenTitles:
         assert [Path(command[1]).name for command in recorded] == [
             "fetch_products.py",
             "shorten_titles.py",
+            "fill_keywords.py",
         ]
         assert result == 1
 
@@ -217,6 +244,7 @@ class TestBandSelection:
         assert repository.apply_updates_calls[0][0] == "自動調査1000円以下"
         assert recorded[0][2:] == ["--sheet", "自動調査1000円以下", "--interval", "auto"]
         assert recorded[1][2:] == ["--sheet", "自動調査1000円以下"]
+        assert recorded[2][2:] == ["--sheet", "自動調査1000円以下"]
 
     def test_タブ名から価格帯を読み取って探す(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000002")])
@@ -256,6 +284,8 @@ class TestBandSelection:
         assert [command[3] for command in recorded] == [
             "自動調査1000円以下",
             "自動調査1000円以下",
+            "自動調査1000円以下",
+            "自動調査1000円-2000円",
             "自動調査1000円-2000円",
             "自動調査1000円-2000円",
         ]

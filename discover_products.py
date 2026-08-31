@@ -46,6 +46,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--limit", type=int, help="追記する件数の上限（タブごと）")
     parser.add_argument(
+        "--no-keywords",
+        action="store_true",
+        help="M列『検索ワード』とY列『広告単価』の書き込みを行わない",
+    )
+    parser.add_argument(
         "--no-shorten",
         action="store_true",
         help="H列『商品名(BUY)』への短縮名の書き込みを行わない",
@@ -82,6 +87,15 @@ def shorten_command(sheet: str) -> list[str]:
     return [
         sys.executable,
         str(PROJECT_ROOT / "shorten_titles.py"),
+        "--sheet",
+        sheet,
+    ]
+
+
+def keyword_command(sheet: str) -> list[str]:
+    return [
+        sys.executable,
+        str(PROJECT_ROOT / "fill_keywords.py"),
         "--sheet",
         sheet,
     ]
@@ -169,14 +183,18 @@ def discover_band(
 
 def complete_rows(args: argparse.Namespace, sheet: str) -> int:
     # 商品情報の取得が一部失敗しても、取れた行の短縮名は書けるので続行する
-    fetch_exit_code = subprocess.run(fetch_command(sheet), cwd=PROJECT_ROOT, check=False).returncode
-    if args.no_shorten:
-        return fetch_exit_code
+    exit_code = subprocess.run(fetch_command(sheet), cwd=PROJECT_ROOT, check=False).returncode
 
-    shorten_exit_code = subprocess.run(
-        shorten_command(sheet), cwd=PROJECT_ROOT, check=False
-    ).returncode
-    return fetch_exit_code or shorten_exit_code
+    for skipped, command in (
+        (args.no_shorten, shorten_command(sheet)),
+        (args.no_keywords, keyword_command(sheet)),
+    ):
+        if skipped:
+            continue
+        step_exit_code = subprocess.run(command, cwd=PROJECT_ROOT, check=False).returncode
+        exit_code = exit_code or step_exit_code
+
+    return exit_code
 
 
 def append_asins(

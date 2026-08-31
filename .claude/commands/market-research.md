@@ -12,7 +12,7 @@ Keepa Product Finder で「安い・売れてる・出たばかり」の商品�
 .venv/bin/python drop_marked.py --dry-run       # まず対象を見る
 .venv/bin/python drop_marked.py
 
-# 2〜3. 探索 → 商品情報の取得 → H列の短縮名まで一続きに走る
+# 2〜3. 探索 → 商品情報の取得 → H列の短縮名 → M列の検索ワードとY列の広告単価まで一続きに走る
 .venv/bin/python discover_products.py --all-sheets
 ```
 
@@ -23,7 +23,8 @@ Keepa Product Finder で「安い・売れてる・出たばかり」の商品�
 
 - `--sheet` … 対象タブを1つに絞る。省略時は価格帯を読み取れる自動調査タブすべて
 - `--no-fetch` … 自動調査タブへ ASIN を書くところで止める（商品情報も短縮名も取らない）
-- `--no-shorten` … 商品情報までで止める（H列の短縮名を書かない）
+- `--no-shorten` … H列の短縮名を書かない
+- `--no-keywords` … M列の検索ワードとY列の広告単価を書かない
 - `--limit` … タブごとの追記件数の上限
 - `--debug` … DEBUG ログを出す
 
@@ -33,6 +34,17 @@ Keepa Product Finder で「安い・売れてる・出たばかり」の商品�
 
 `com.wada.market-research` が毎日 06:30 に `discover_products.py --all-sheets` を実行する。
 **CLI の 2〜3 だけが自動で回る。** 1（d行の退避）と 4（仕入先調査）は人の判断・ブラウザが要るため入っていない。
+
+## 検索ワードと広告単価は Amazon Ads API から取る
+
+`fill_keywords.py` が ASIN ごとに **推奨キーワード**（`/sp/targets/keywords/recommendations`）を引き、
+上位3件を **M列『検索ワード』** に、対応する完全一致の推奨入札額を **Y列『広告単価』** に改行区切りで書く。
+
+- **`bid` は円の1/100で返る。** `9700` は 97円。そのまま書くと100倍になる
+- 資格情報は広告プロジェクトと共有する（`.env` の `AD_CREDENTIALS_ENV` が
+  `data-engineer/dwld-ad-data/.env` を指す）。同じものを二重に持たない
+- **手入力の値は上書きしない。** M列・Y列のどちらかが埋まっている行は飛ばす
+- **N列『検索数』は Ads API では取れない。** Amazon の公式APIに検索ボリュームは無く、この列は未自動化
 
 ## A列の「d」は候補外へ移す
 
