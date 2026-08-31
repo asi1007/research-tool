@@ -52,7 +52,7 @@ class DiscoveryCriteria:
     min_price_yen: int = 1
     max_price_yen: int = 1000
     min_monthly_revenue_yen: int = 500_000
-    max_age_days: int = 180
+    max_age_days: int = 365
     excluded_categories: tuple[int, ...] = field(default=EXCLUDED_CATEGORIES)
     per_page: int = MIN_PER_PAGE
 

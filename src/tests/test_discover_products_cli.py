@@ -308,6 +308,18 @@ def _record(recorded: list[list[str]]):
     return fake_run
 
 
+class TestDryRunSkipsLookup:
+    def test_dryrunでは実測を問い合わせない(self, monkeypatch) -> None:
+        # 実測は1件1トークン。書き込まない dry-run で消費しない
+        keepa = FakeKeepa([Asin("B000000031"), Asin("B000000032")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record([]))
+
+        run(_args(dry_run=True), repository=repository, keepa=keepa)
+
+        assert keepa.fetched == []
+
+
 class TestRevenueFilter:
     def test_月商が基準に満たないASINは積まない(self, monkeypatch) -> None:
         keepa = FakeKeepa(

@@ -25,8 +25,11 @@ class TestSelection:
         assert selection["current_NEW_gte"] == 1
         assert selection["current_NEW_lte"] == 1000
         assert selection["listedSince_gte"] == to_keepa_minutes(
-            datetime(2026, 3, 2, 0, 0, tzinfo=timezone.utc)
+            datetime(2025, 8, 29, 0, 0, tzinfo=timezone.utc)
         )
+
+    def test_出品からの経過は1年以内(self) -> None:
+        assert DiscoveryCriteria().max_age_days == 365
 
     def test_月商50万円に必要な最低販売数をクエリに使う(self) -> None:
         # 1000円で50万円に届くには500個。この帯でこれ未満は価格が上限でも届かない

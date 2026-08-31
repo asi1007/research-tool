@@ -10,6 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.domain.value_objects.asin import Asin
+from src.domain.value_objects.discovery_criteria import DiscoveryCriteria
 from src.domain.value_objects.discovery_band import (
     DEFAULT_DISCOVERY_SHEET,
     DiscoveryBand,
@@ -150,8 +151,7 @@ def discover_band(
     found = keepa.find_asins(criteria, datetime.now(timezone.utc))
     # 実測は既知ASINを除いてから行う。Keepa のトークンは1件1消費なので無駄打ちを避ける
     unknown = select_new_asins(found, known)
-    profitable = select_by_revenue(keepa.fetch_products(unknown), criteria)
-    fresh = profitable[: args.limit] if args.limit is not None else profitable
+    fresh = [] if args.dry_run else select_new_by_revenue(args, unknown, criteria, keepa)
     known.update(str(asin) for asin in fresh)
 
     logger.info(
@@ -167,7 +167,7 @@ def discover_band(
             }
         },
     )
-    for asin in fresh:
+    for asin in fresh or unknown:
         print(f"{asin} {asin.amazon_url}")
 
     if args.dry_run:
@@ -195,6 +195,16 @@ def complete_rows(args: argparse.Namespace, sheet: str) -> int:
         exit_code = exit_code or step_exit_code
 
     return exit_code
+
+
+def select_new_by_revenue(
+    args: argparse.Namespace,
+    unknown: list[Asin],
+    criteria: DiscoveryCriteria,
+    keepa: KeepaClient,
+) -> list[Asin]:
+    profitable = select_by_revenue(keepa.fetch_products(unknown), criteria)
+    return profitable[: args.limit] if args.limit is not None else profitable
 
 
 def append_asins(
