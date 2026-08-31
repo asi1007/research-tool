@@ -43,11 +43,13 @@ class FakeKeepa:
         self.products = products
         self.calls = 0
         self.criteria: list[object] = []
+        self.max_pages: list[int] = []
         self.fetched: list[list[Asin]] = []
 
-    def find_asins(self, criteria, now) -> list[Asin]:
+    def find_asins(self, criteria, now, max_pages=20) -> list[Asin]:
         self.calls += 1
         self.criteria.append(criteria)
+        self.max_pages.append(max_pages)
         return self.found
 
     def fetch_products(self, asins: list[Asin]) -> list:
@@ -96,6 +98,7 @@ def _args(**overrides: object) -> argparse.Namespace:
         "no_keywords": False,
         "sheet": None,
         "all_sheets": False,
+        "max_pages": None,
     }
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -345,3 +348,23 @@ class TestRevenueFilter:
         run(_args(no_fetch=True), repository=repository, keepa=keepa)
 
         assert [str(asin) for asin in keepa.fetched[0]] == ["B000000022"]
+
+
+class TestMaxPages:
+    def test_既定はKeepaクライアントの上限に任せる(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000041")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record([]))
+
+        run(_args(dry_run=True), repository=repository, keepa=keepa)
+
+        assert keepa.max_pages == [discover_products.DEFAULT_MAX_PAGES]
+
+    def test_ページ数を絞れる(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000042")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record([]))
+
+        run(_args(dry_run=True, max_pages=1), repository=repository, keepa=keepa)
+
+        assert keepa.max_pages == [1]

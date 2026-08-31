@@ -28,6 +28,7 @@ from src.usecases.discover_products import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+DEFAULT_MAX_PAGES = 20
 
 logger = logging.getLogger("discover_products")
 
@@ -46,6 +47,11 @@ def parse_args() -> argparse.Namespace:
         help="価格帯を読めるすべての自動調査タブを安い順に処理する",
     )
     parser.add_argument("--limit", type=int, help="追記する件数の上限（タブごと）")
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        help=f"Product Finder を引くページ数の上限（既定 {DEFAULT_MAX_PAGES}）。1ページ11トークン以上かかる",
+    )
     parser.add_argument(
         "--no-keywords",
         action="store_true",
@@ -148,7 +154,8 @@ def discover_band(
     known: set[str],
 ) -> int:
     criteria = band.criteria()
-    found = keepa.find_asins(criteria, datetime.now(timezone.utc))
+    max_pages = args.max_pages or DEFAULT_MAX_PAGES
+    found = keepa.find_asins(criteria, datetime.now(timezone.utc), max_pages=max_pages)
     # 実測は既知ASINを除いてから行う。Keepa のトークンは1件1消費なので無駄打ちを避ける
     unknown = select_new_asins(found, known)
     fresh = [] if args.dry_run else select_new_by_revenue(args, unknown, criteria, keepa)
