@@ -113,22 +113,30 @@ def fill_sheet(
         asins = asins[: args.limit]
 
     logger.info("対象を抽出しました", extra={"context": {"sheet": sheet, "count": len(asins)}})
-    written = 0
 
-    for asin in asins:
-        suggestions = fetch_suggestions(client, sheet, asin)
-        if not suggestions:
-            continue
+    collected = {
+        str(asin): suggestions
+        for asin in asins
+        if (suggestions := fetch_suggestions(client, sheet, asin))
+    }
 
-        if args.dry_run:
+    if args.dry_run:
+        for asin, suggestions in collected.items():
             print(f"{sheet}\t{asin}\t" + " / ".join(f"{s.keyword}:{s.bid_yen}" for s in suggestions))
-            continue
+        return 0
 
-        # 書き込む直前に読み直す。取得中に行が動いていても ASIN で引き直せる
-        updates = build_keyword_updates(repository.read_values(sheet), str(asin), suggestions)
-        written += repository.apply_updates(sheet, updates)
+    # 全件そろえてから、書き込む直前に1回だけ読み直す。
+    # 1行ごとに読み直すと Sheets の呼び出しが増えて 502 に当たる（実際に54件で落ちた）
+    latest = repository.read_values(sheet)
+    updates: dict[int, dict[int, object]] = {}
+    for asin, suggestions in collected.items():
+        updates.update(build_keyword_updates(latest, asin, suggestions))
 
-    logger.info("書き込みました", extra={"context": {"sheet": sheet, "cells": written}})
+    written = repository.apply_updates(sheet, updates)
+    logger.info(
+        "書き込みました",
+        extra={"context": {"sheet": sheet, "rows": len(updates), "cells": written}},
+    )
     return written
 
 

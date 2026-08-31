@@ -1,7 +1,12 @@
 import pytest
 
 from src.domain.value_objects.asin import Asin
-from src.infrastructure.ads_client import AdsApiError, AmazonAdsClient
+from src.infrastructure.ads_client import (
+    MAX_THROTTLE_RETRIES,
+    THROTTLE_WAIT_SECONDS,
+    AdsApiError,
+    AmazonAdsClient,
+)
 
 
 class FakeResponse:
@@ -27,9 +32,14 @@ class FakeSession:
 class FakeClock:
     def __init__(self) -> None:
         self.now = 0.0
+        self.slept: list[float] = []
 
     def time(self) -> float:
         return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        self.now += seconds
 
 
 TOKEN = FakeResponse(200, {"access_token": "token-1", "expires_in": 3600})
@@ -78,11 +88,32 @@ class TestFetchKeywordRecommendations:
 
         assert sum(1 for call in session.calls if call["url"].endswith("/auth/o2/token")) == 2
 
-    def test_エラーは例外にする(self) -> None:
+    def test_混雑したら待って取り直す(self) -> None:
+        session = FakeSession([TOKEN, FakeResponse(429, {"code": "429"}), KEYWORDS])
+        clock = FakeClock()
+
+        payload = _client(session, clock).fetch_keyword_recommendations(Asin("B000000001"))
+
+        assert payload == {"keywordTargetList": [{"keyword": "x", "bidInfo": []}]}
+        assert clock.slept == [THROTTLE_WAIT_SECONDS]
+
+    def test_待っても混雑が続けば例外にする(self) -> None:
         session = FakeSession([TOKEN, FakeResponse(429, {"code": "429"})])
+        clock = FakeClock()
 
         with pytest.raises(AdsApiError, match="429"):
-            _client(session).fetch_keyword_recommendations(Asin("B000000001"))
+            _client(session, clock).fetch_keyword_recommendations(Asin("B000000001"))
+
+        assert len(clock.slept) == MAX_THROTTLE_RETRIES - 1
+
+    def test_混雑以外のエラーは待たずに例外にする(self) -> None:
+        session = FakeSession([TOKEN, FakeResponse(400, {"code": "400"})])
+        clock = FakeClock()
+
+        with pytest.raises(AdsApiError, match="400"):
+            _client(session, clock).fetch_keyword_recommendations(Asin("B000000001"))
+
+        assert clock.slept == []
 
     def test_リージョンが不正なら作れない(self) -> None:
         with pytest.raises(ValueError, match="region"):

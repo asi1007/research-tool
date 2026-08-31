@@ -22,6 +22,9 @@ TIMEOUT_SECONDS = 60
 TOKEN_TTL_SECONDS = 3600
 TOKEN_EXPIRY_MARGIN_SECONDS = 60
 MAX_RECOMMENDATIONS = 10
+TOO_MANY_REQUESTS = 429
+MAX_THROTTLE_RETRIES = 3
+THROTTLE_WAIT_SECONDS = 10
 
 
 class AdsApiError(RuntimeError):
@@ -56,21 +59,31 @@ class AmazonAdsClient:
         self._token_expiry: float = 0
 
     def fetch_keyword_recommendations(self, asin: Asin) -> dict:
-        response = self.session.post(
-            f"{self.base_url}{KEYWORD_RECOMMENDATIONS_PATH}",
-            headers=self._headers(),
-            json={
-                "recommendationType": "KEYWORDS_FOR_ASINS",
-                "asins": [str(asin)],
-                "maxRecommendations": MAX_RECOMMENDATIONS,
-            },
-            timeout=TIMEOUT_SECONDS,
-        )
-        if response.status_code != 200:
-            raise AdsApiError(
-                f"Ads API error: {response.status_code} - {response.text[:200]}"
+        for attempt in range(MAX_THROTTLE_RETRIES):
+            response = self.session.post(
+                f"{self.base_url}{KEYWORD_RECOMMENDATIONS_PATH}",
+                headers=self._headers(),
+                json={
+                    "recommendationType": "KEYWORDS_FOR_ASINS",
+                    "asins": [str(asin)],
+                    "maxRecommendations": MAX_RECOMMENDATIONS,
+                },
+                timeout=TIMEOUT_SECONDS,
             )
-        return response.json()
+            if response.status_code == 200:
+                return response.json()
+
+            if response.status_code != TOO_MANY_REQUESTS:
+                break
+
+            if attempt < MAX_THROTTLE_RETRIES - 1:
+                logger.info(
+                    "Ads API が混雑しているため待って取り直します",
+                    extra={"context": {"asin": str(asin), "attempt": attempt + 1}},
+                )
+                self.clock.sleep(THROTTLE_WAIT_SECONDS)
+
+        raise AdsApiError(f"Ads API error: {response.status_code} - {response.text[:200]}")
 
     def _headers(self) -> dict[str, str]:
         return {
