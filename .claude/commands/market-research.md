@@ -44,7 +44,24 @@ Keepa Product Finder で「安い・売れてる・出たばかり」の商品�
 - 資格情報は広告プロジェクトと共有する（`.env` の `AD_CREDENTIALS_ENV` が
   `data-engineer/dwld-ad-data/.env` を指す）。同じものを二重に持たない
 - **手入力の値は上書きしない。** M列・Y列のどちらかが埋まっている行は飛ばす
-- **N列『検索数』は Ads API では取れない。** Amazon の公式APIに検索ボリュームは無く、この列は未自動化
+- **N列『検索数』は Ads API では取れない。** Amazon の公式APIに検索ボリューム（絶対値）は無い。
+  この列はセラースプライトからの手入力のまま
+
+## 検索順位（BT列）は Brand Analytics から取る
+
+`fill_search_rank.py` が **検索キーワードレポート**（`GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT`）を引き、
+M列の検索ワードごとの **`searchFrequencyRank`** を BT列『検索順位』へ改行区切りで書く。**小さいほどよく検索されている**。
+
+```bash
+.venv/bin/python fill_search_rank.py --dry-run     # 対象行だけ見る
+.venv/bin/python fill_search_rank.py               # 全自動調査タブへ書く
+.venv/bin/python fill_search_rank.py --refresh     # キャッシュを捨ててレポートを取り直す
+```
+
+- **`dataStartTime` は日曜でないと FATAL になる**（`dataStartTime must be a Sunday when reportPeriod=WEEK`）
+- レポートは **43万〜130万語・数十MB**。週次更新なので `data/search_rank_YYYY-MM-DD.json` にキャッシュし、同じ週は取り直さない
+- **検索数ではなく順位。** セラースプライトの「検索数」とは別の指標なので、N列とは分けてある
+- 生成に1〜2分かかる。`GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT` は `asin` 必須で自社商品専用のため使えない
 
 ## A列の「d」は候補外へ移す
 

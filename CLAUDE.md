@@ -148,7 +148,9 @@ Amazon は販売時に必ず販売手数料を取るため 0 は正当な値に�
   行を消しただけだと既知ASINから外れ、翌朝の定期実行でまた積まれる
 - **検索ワード(M)と広告単価(Y)は Amazon Ads API の推奨キーワードから入れる。** 資格情報は
   `data-engineer/dwld-ad-data/.env` を `AD_CREDENTIALS_ENV` 経由で借りる。**`bid` は円の1/100**（9700→97円）。
-  **N列『検索数』は公式APIに存在しないため未自動化**
+  **N列『検索数』は公式APIに存在しない**（セラースプライトの手入力のまま）
+- **検索順位(BT)は Brand Analytics の検索キーワードレポートから取る。** `searchFrequencyRank` は
+  検索数ではなく順位。**`dataStartTime` が日曜でないと FATAL**。43万語超・数十MBあるので週単位でキャッシュする
 - **`releaseDate` は 0 の商品が大半で使えない。** 発売日の判定は `listedSince`（Amazon 出品日）
 - **Amazon 本体の除外は `availabilityAmazon: [-1]`。** `current_AMAZON` の範囲指定は 0件になる
 - **`perPage` は 50 未満だと 400 エラー。** 1回 11トークン
