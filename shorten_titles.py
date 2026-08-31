@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -13,11 +14,13 @@ from src.infrastructure.logging_config import configure_logging
 from src.infrastructure.sheet_repository import GoogleSheetRepository
 from src.usecases.shorten_titles import (
     DEFAULT_BATCH_SIZE,
+    TitleTarget,
     build_prompt,
     build_updates,
     chunk_targets,
     extract_targets,
     parse_batch_response,
+    relocate_batch,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -34,6 +37,37 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sheet", help="対象タブを絞る(省略時は全タブ)")
     parser.add_argument("--debug", action="store_true", help="DEBUGログを出力する")
     return parser.parse_args()
+
+
+@dataclass(frozen=True)
+class LocatedBatch:
+    targets: list[TitleTarget]
+    short_titles: dict[int, str]
+
+
+def locate_batch(
+    batch: list[TitleTarget],
+    repository: GoogleSheetRepository,
+    short_titles: dict[int, str],
+) -> LocatedBatch:
+    targets = list(batch)
+    surviving = dict(short_titles)
+
+    for sheet_name in sorted({target.sheet for target in batch}):
+        indexes = [index for index, target in enumerate(batch) if target.sheet == sheet_name]
+        result = relocate_batch([batch[index] for index in indexes], repository.read_values(sheet_name))
+
+        for position, index in enumerate(indexes):
+            targets[index] = result.targets[position]
+            if position not in result.lost_indexes:
+                continue
+            surviving.pop(index, None)
+            logger.warning(
+                "書き込む直前に行を特定できなかったためこの行はスキップします",
+                extra={"context": {"sheet": sheet_name, "asin": batch[index].asin}},
+            )
+
+    return LocatedBatch(targets=targets, short_titles=surviving)
 
 
 def build_repository() -> GoogleSheetRepository:
@@ -122,7 +156,8 @@ def run(
                 print(f"{target.sheet}\t{target.row_number}\t{target.title}\t→\t{short_title}")
             continue
 
-        batch_updates = build_updates(batch, result.short_titles)
+        located = locate_batch(batch, repository, result.short_titles)
+        batch_updates = build_updates(located.targets, located.short_titles)
         for sheet_name, row_updates in batch_updates.items():
             written = repository.apply_updates(sheet_name, row_updates)
             total_written += written

@@ -29,6 +29,9 @@ class FakeRepository:
     def read_all_values(self) -> dict[str, list[list]]:
         return self.sheet_values
 
+    def read_values(self, sheet_name: str) -> list[list]:
+        return self.sheet_values[sheet_name]
+
     def apply_updates(self, sheet_name: str, updates: dict) -> int:
         self.apply_updates_calls.append((sheet_name, updates))
         return sum(len(columns) for columns in updates.values())
@@ -256,3 +259,44 @@ class TestRun:
         dropped_records = [r for r in caplog.records if r.context["asin"] == "B000000002"]
         assert len(dropped_records) == 1
         assert dropped_records[0].context["length"] == 0
+
+
+class TestRowsMovedWhileRunning:
+    def test_行が挿入されても正しい行へ書く(self) -> None:
+        sheet_values = {
+            "自動調査": _values([_row("B000000001", "商品A"), _row("B000000002", "商品B")])
+        }
+        repository = FakeRepository(sheet_values)
+
+        class MovingCli(FakeClaudeCli):
+            def complete(self, prompt: str) -> str:
+                # claude -p を待っている間に、他のセッションが先頭へ1行挿入した
+                sheet_values["自動調査"].insert(3, _row("B000000009", "割り込み商品"))
+                return super().complete(prompt)
+
+        cli = MovingCli(['[{"index": 0, "short_title": "商品A"}, {"index": 1, "short_title": "商品B"}]'])
+
+        result = run(_args(), repository=repository, cli=cli)
+
+        assert result == 0
+        assert repository.apply_updates_calls == [
+            ("自動調査", {5: {7: "商品A"}, 6: {7: "商品B"}})
+        ]
+
+    def test_消えた行には書かない(self) -> None:
+        sheet_values = {
+            "自動調査": _values([_row("B000000001", "商品A"), _row("B000000002", "商品B")])
+        }
+        repository = FakeRepository(sheet_values)
+
+        class DeletingCli(FakeClaudeCli):
+            def complete(self, prompt: str) -> str:
+                del sheet_values["自動調査"][3]
+                return super().complete(prompt)
+
+        cli = DeletingCli(['[{"index": 0, "short_title": "商品A"}, {"index": 1, "short_title": "商品B"}]'])
+
+        result = run(_args(), repository=repository, cli=cli)
+
+        assert result == 0
+        assert repository.apply_updates_calls == [("自動調査", {4: {7: "商品B"}})]

@@ -21,6 +21,7 @@ from src.infrastructure.logging_config import configure_logging
 from src.infrastructure.sheet_repository import GoogleSheetRepository
 from src.usecases.discover_products import (
     known_asins,
+    select_by_revenue,
     plan_append,
     select_new_asins,
 )
@@ -44,6 +45,11 @@ def parse_args() -> argparse.Namespace:
         help="価格帯を読めるすべての自動調査タブを安い順に処理する",
     )
     parser.add_argument("--limit", type=int, help="追記する件数の上限（タブごと）")
+    parser.add_argument(
+        "--no-shorten",
+        action="store_true",
+        help="H列『商品名(BUY)』への短縮名の書き込みを行わない",
+    )
     parser.add_argument("--dry-run", action="store_true", help="書き込まず件数だけ表示する")
     parser.add_argument("--no-fetch", action="store_true", help="商品情報の取得を続けて行わない")
     parser.add_argument("--debug", action="store_true", help="DEBUGログを出力する")
@@ -69,6 +75,15 @@ def fetch_command(sheet: str) -> list[str]:
         sheet,
         "--interval",
         "auto",
+    ]
+
+
+def shorten_command(sheet: str) -> list[str]:
+    return [
+        sys.executable,
+        str(PROJECT_ROOT / "shorten_titles.py"),
+        "--sheet",
+        sheet,
     ]
 
 
@@ -117,8 +132,12 @@ def discover_band(
     keepa: KeepaClient,
     known: set[str],
 ) -> int:
-    found = keepa.find_asins(band.criteria(), datetime.now(timezone.utc))
-    fresh = select_new_asins(found, known, limit=args.limit)
+    criteria = band.criteria()
+    found = keepa.find_asins(criteria, datetime.now(timezone.utc))
+    # 実測は既知ASINを除いてから行う。Keepa のトークンは1件1消費なので無駄打ちを避ける
+    unknown = select_new_asins(found, known)
+    profitable = select_by_revenue(keepa.fetch_products(unknown), criteria)
+    fresh = profitable[: args.limit] if args.limit is not None else profitable
     known.update(str(asin) for asin in fresh)
 
     logger.info(
@@ -129,6 +148,7 @@ def discover_band(
                 "min_price_yen": band.min_price_yen,
                 "max_price_yen": band.max_price_yen,
                 "found": len(found),
+                "unknown": len(unknown),
                 "new": len(fresh),
             }
         },
@@ -144,7 +164,19 @@ def discover_band(
 
     if args.no_fetch:
         return 0
-    return subprocess.run(fetch_command(band.sheet), cwd=PROJECT_ROOT, check=False).returncode
+    return complete_rows(args, band.sheet)
+
+
+def complete_rows(args: argparse.Namespace, sheet: str) -> int:
+    # 商品情報の取得が一部失敗しても、取れた行の短縮名は書けるので続行する
+    fetch_exit_code = subprocess.run(fetch_command(sheet), cwd=PROJECT_ROOT, check=False).returncode
+    if args.no_shorten:
+        return fetch_exit_code
+
+    shorten_exit_code = subprocess.run(
+        shorten_command(sheet), cwd=PROJECT_ROOT, check=False
+    ).returncode
+    return fetch_exit_code or shorten_exit_code
 
 
 def append_asins(

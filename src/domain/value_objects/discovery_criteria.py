@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from math import ceil
 
 KEEPA_EPOCH = datetime(2011, 1, 1, tzinfo=timezone.utc)
 MIN_PER_PAGE = 50
@@ -29,6 +30,15 @@ EXCLUDED_ROOT_CATEGORIES: tuple[int, ...] = (
     3210981,     # 家電＆カメラ
 )
 
+# ルート単位で落とせないもの。ポケモンカード等のトレカは「ホビー」配下にあり、
+# ホビーごと除外するとプラモデル・鉄道模型まで落ちてしまう
+EXCLUDED_SUB_CATEGORIES: tuple[int, ...] = (
+    2189358051,   # ホビー > コレクションカード・アクセサリ（ポケモンカード・オリパ）
+    10345415051,  # トレーディングカードゲーム
+)
+
+EXCLUDED_CATEGORIES: tuple[int, ...] = EXCLUDED_ROOT_CATEGORIES + EXCLUDED_SUB_CATEGORIES
+
 STANDARD_PRODUCT_TYPE = 0
 NO_AMAZON_OFFER = -1
 
@@ -41,9 +51,9 @@ def to_keepa_minutes(moment: datetime) -> int:
 class DiscoveryCriteria:
     min_price_yen: int = 1
     max_price_yen: int = 1000
-    min_monthly_sold: int = 1000
+    min_monthly_revenue_yen: int = 500_000
     max_age_days: int = 180
-    excluded_categories: tuple[int, ...] = field(default=EXCLUDED_ROOT_CATEGORIES)
+    excluded_categories: tuple[int, ...] = field(default=EXCLUDED_CATEGORIES)
     per_page: int = MIN_PER_PAGE
 
     def __post_init__(self) -> None:
@@ -54,12 +64,19 @@ class DiscoveryCriteria:
         if self.per_page < MIN_PER_PAGE:
             raise ValueError(f"perPage は {MIN_PER_PAGE} 以上にする（Keepa が 400 を返す）")
 
+    def min_monthly_sold(self) -> int:
+        # Keepa は「販売数×価格」で絞れない。帯の上限価格でも月商に届かない販売数を足切りに使う
+        return ceil(self.min_monthly_revenue_yen / self.max_price_yen)
+
+    def meets_revenue(self, price_yen: float, monthly_sold: int) -> bool:
+        return price_yen * monthly_sold >= self.min_monthly_revenue_yen
+
     def selection(self, now: datetime, page: int = 0) -> dict:
         listed_since = now - timedelta(days=self.max_age_days)
         return {
             "current_NEW_gte": self.min_price_yen,
             "current_NEW_lte": self.max_price_yen,
-            "monthlySold_gte": self.min_monthly_sold,
+            "monthlySold_gte": self.min_monthly_sold(),
             "listedSince_gte": to_keepa_minutes(listed_since),
             "productType": [STANDARD_PRODUCT_TYPE],
             "availabilityAmazon": [NO_AMAZON_OFFER],

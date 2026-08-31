@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from src.domain.entities.product_info import ProductInfo
 from src.domain.value_objects.asin import Asin
+from src.domain.value_objects.discovery_criteria import DiscoveryCriteria
 from src.infrastructure.column_codes import ColumnCodes
 
 ASIN_CODE = "ASIN_SELL"
@@ -45,6 +47,16 @@ def select_new_asins(
         selected.append(asin)
 
     return selected
+
+
+def select_by_revenue(
+    products: list[ProductInfo], criteria: DiscoveryCriteria
+) -> list[Asin]:
+    return [
+        product.asin
+        for product in products
+        if criteria.meets_revenue(product.buy_box_price, product.monthly_sold)
+    ]
 
 
 @dataclass(frozen=True)

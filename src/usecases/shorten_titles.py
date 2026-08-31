@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 
+from src.domain.value_objects.asin import Asin
 from src.infrastructure.column_codes import ColumnCodes
 
 HEADER_ROWS = 3
@@ -181,3 +183,70 @@ def build_updates(batch: list[TitleTarget], parsed: dict[int, str]) -> Updates:
         row_updates = sheet_updates.setdefault(target.row_number, {})
         row_updates[target.title_buy_column] = parsed[index]
     return updates
+
+
+@dataclass(frozen=True)
+class RelocateResult:
+    targets: list[TitleTarget]
+    lost_indexes: set[int]
+
+
+def _rows_by_key(values: list[list], key_of: Callable[[list], str | None]) -> dict[str, list[int]]:
+    rows: dict[str, list[int]] = {}
+
+    for offset, row in enumerate(values[HEADER_ROWS:]):
+        key = key_of(row)
+        if not key:
+            continue
+        rows.setdefault(key, []).append(HEADER_ROWS + offset + 1)
+
+    return rows
+
+
+def relocate_batch(batch: list[TitleTarget], values: list[list]) -> RelocateResult:
+    # 読み取りから書き込みまでの間に行が挿入・削除されると行番号がずれるため、
+    # 書き込む直前に ASIN で引き直す。合致しない対象は書かずに次回へ回す。
+    codes = ColumnCodes(values)
+    asin_index = codes.index_of(ASIN_CODE)
+    title_buy_index = codes.index_of(TITLE_BUY_CODE)
+    if asin_index is None or title_buy_index is None:
+        return RelocateResult(targets=batch, lost_indexes=set(range(len(batch))))
+
+    title_sell_index = codes.index_of(TITLE_SELL_CODE)
+    rows_by_asin = _rows_by_key(values, lambda row: _parsed_asin(_cell(row, asin_index)))
+    rows_by_title = _rows_by_key(values, lambda row: _cell(row, title_sell_index))
+    relocated: list[TitleTarget] = []
+    lost_indexes: set[int] = set()
+
+    for index, target in enumerate(batch):
+        row_number = _unique_row(target, rows_by_asin, rows_by_title)
+        if row_number is None or not _is_writable(values, row_number, title_buy_index):
+            lost_indexes.add(index)
+            relocated.append(target)
+            continue
+        relocated.append(replace(target, row_number=row_number, title_buy_column=title_buy_index))
+
+    return RelocateResult(targets=relocated, lost_indexes=lost_indexes)
+
+
+def _parsed_asin(value: str) -> str | None:
+    asin = Asin.parse(value)
+    return None if asin is None else str(asin)
+
+
+def _unique_row(
+    target: TitleTarget,
+    rows_by_asin: dict[str, list[int]],
+    rows_by_title: dict[str, list[int]],
+) -> int | None:
+    # ASIN が引ければ ASIN で、無い行（手入力タブ）は商品名で引く。どちらも一意でなければ書かない
+    asin = _parsed_asin(target.asin)
+    rows = rows_by_asin.get(asin, []) if asin else rows_by_title.get(target.title, [])
+    if len(rows) != 1:
+        return None
+    return rows[0]
+
+
+def _is_writable(values: list[list], row_number: int, title_buy_index: int) -> bool:
+    row = values[row_number - 1]
+    return not _cell(row, title_buy_index)

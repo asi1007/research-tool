@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from src.domain.value_objects.discovery_criteria import (
+    EXCLUDED_CATEGORIES,
     EXCLUDED_ROOT_CATEGORIES,
     DiscoveryCriteria,
     to_keepa_minutes,
@@ -23,10 +24,30 @@ class TestSelection:
 
         assert selection["current_NEW_gte"] == 1
         assert selection["current_NEW_lte"] == 1000
-        assert selection["monthlySold_gte"] == 1000
         assert selection["listedSince_gte"] == to_keepa_minutes(
             datetime(2026, 3, 2, 0, 0, tzinfo=timezone.utc)
         )
+
+    def test_月商50万円に必要な最低販売数をクエリに使う(self) -> None:
+        # 1000円で50万円に届くには500個。この帯でこれ未満は価格が上限でも届かない
+        assert DiscoveryCriteria().selection(NOW)["monthlySold_gte"] == 500
+
+    def test_価格上限が高い帯ほど必要な販売数は少ない(self) -> None:
+        criteria = DiscoveryCriteria(min_price_yen=1001, max_price_yen=2000)
+
+        assert criteria.selection(NOW)["monthlySold_gte"] == 250
+
+    def test_割り切れないときは切り上げる(self) -> None:
+        criteria = DiscoveryCriteria(max_price_yen=3000, min_monthly_revenue_yen=500_000)
+
+        assert criteria.selection(NOW)["monthlySold_gte"] == 167
+
+    def test_月商が条件を満たすかを判定する(self) -> None:
+        criteria = DiscoveryCriteria()
+
+        assert criteria.meets_revenue(price_yen=1000, monthly_sold=500) is True
+        assert criteria.meets_revenue(price_yen=999, monthly_sold=500) is False
+        assert criteria.meets_revenue(price_yen=0, monthly_sold=10_000) is False
 
     def test_Amazon本体とバリエーション親を除外する(self) -> None:
         selection = DiscoveryCriteria().selection(NOW)
@@ -34,13 +55,26 @@ class TestSelection:
         assert selection["availabilityAmazon"] == [-1]
         assert selection["productType"] == [0]
 
-    def test_除外カテゴリは19件で本と食品を含む(self) -> None:
+    def test_ルート除外カテゴリは19件で本と食品を含む(self) -> None:
         assert len(EXCLUDED_ROOT_CATEGORIES) == 19
         assert 465392 in EXCLUDED_ROOT_CATEGORIES
         assert 57239051 in EXCLUDED_ROOT_CATEGORIES
 
     def test_化粧品を含むビューティーは除外する(self) -> None:
         assert 52374051 in EXCLUDED_ROOT_CATEGORIES
+
+    def test_除外カテゴリはルートとサブを合わせたもの(self) -> None:
+        assert set(EXCLUDED_ROOT_CATEGORIES) <= set(EXCLUDED_CATEGORIES)
+        assert len(EXCLUDED_CATEGORIES) == len(EXCLUDED_ROOT_CATEGORIES) + 2
+
+    def test_ポケモンカードを含むコレクションカードは除外する(self) -> None:
+        assert 2189358051 in EXCLUDED_CATEGORIES
+
+    def test_トレーディングカードゲームも除外する(self) -> None:
+        assert 10345415051 in EXCLUDED_CATEGORIES
+
+    def test_ホビーそのものは除外しない(self) -> None:
+        assert 2277721051 not in EXCLUDED_CATEGORIES
 
     def test_パソコン周辺は除外しない(self) -> None:
         assert 2127209051 not in EXCLUDED_ROOT_CATEGORIES

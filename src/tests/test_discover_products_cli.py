@@ -1,10 +1,12 @@
 import argparse
 import subprocess
 import sys
+from pathlib import Path
 from datetime import datetime, timezone
 
 import discover_products
-from discover_products import fetch_command, run
+from discover_products import fetch_command, run, shorten_command
+from src.domain.entities.product_info import ProductInfo
 from src.domain.value_objects.asin import Asin
 
 
@@ -17,16 +19,35 @@ class TestFetchCommand:
         assert command[2:] == ["--sheet", "自動調査", "--interval", "auto"]
 
 
+class TestShortenCommand:
+    def test_同じvenvのpythonでshorten_titlesを呼ぶ(self) -> None:
+        command = shorten_command("自動調査")
+
+        assert command[0] == sys.executable
+        assert command[1].endswith("shorten_titles.py")
+        assert command[2:] == ["--sheet", "自動調査"]
+
+
 class FakeKeepa:
-    def __init__(self, found: list[Asin]) -> None:
+    def __init__(self, found: list[Asin], products: list | None = None) -> None:
         self.found = found
+        self.products = products
         self.calls = 0
         self.criteria: list[object] = []
+        self.fetched: list[list[Asin]] = []
 
     def find_asins(self, criteria, now) -> list[Asin]:
         self.calls += 1
         self.criteria.append(criteria)
         return self.found
+
+    def fetch_products(self, asins: list[Asin]) -> list:
+        self.fetched.append(asins)
+        if self.products is not None:
+            return self.products
+        return [
+            ProductInfo(asin=asin, buy_box_price=2000, monthly_sold=1000) for asin in asins
+        ]
 
 
 class FakeRepository:
@@ -62,6 +83,7 @@ def _args(**overrides: object) -> argparse.Namespace:
         "limit": None,
         "dry_run": False,
         "no_fetch": False,
+        "no_shorten": False,
         "sheet": None,
         "all_sheets": False,
     }
@@ -111,7 +133,7 @@ class TestRun:
         assert result == 0
         assert repository.apply_updates_calls == []
         assert repository.ensure_rows_calls == []
-        assert len(recorded_commands) == 1
+        assert len(recorded_commands) == 2
 
     def test_no_fetchのときsubprocess_runが呼ばれない(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000009")])
@@ -130,6 +152,58 @@ class TestRun:
         assert called["subprocess"] is False
 
 
+class TestShortenTitles:
+    def test_商品情報の取得に続けて短縮名を書き込む(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000010")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record(recorded := []))
+
+        run(_args(), repository=repository, keepa=keepa)
+
+        assert [Path(command[1]).name for command in recorded] == [
+            "fetch_products.py",
+            "shorten_titles.py",
+        ]
+
+    def test_no_shortenのとき短縮名は書き込まない(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000011")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record(recorded := []))
+
+        run(_args(no_shorten=True), repository=repository, keepa=keepa)
+
+        assert [Path(command[1]).name for command in recorded] == ["fetch_products.py"]
+
+    def test_no_fetchのとき短縮名も書き込まない(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000012")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record(recorded := []))
+
+        run(_args(no_fetch=True), repository=repository, keepa=keepa)
+
+        assert recorded == []
+
+    def test_商品情報の取得が失敗しても短縮名は書き込む(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000013")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        recorded: list[list[str]] = []
+
+        def fake_run(command, **kwargs) -> subprocess.CompletedProcess:
+            recorded.append(command)
+            failed = Path(command[1]).name == "fetch_products.py"
+            return subprocess.CompletedProcess(command, 1 if failed else 0)
+
+        monkeypatch.setattr(discover_products.subprocess, "run", fake_run)
+
+        result = run(_args(), repository=repository, keepa=keepa)
+
+        assert [Path(command[1]).name for command in recorded] == [
+            "fetch_products.py",
+            "shorten_titles.py",
+        ]
+        assert result == 1
+
+
 class TestBandSelection:
     def test_既定は1000円以下タブで1円から1000円を探す(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000001")])
@@ -142,6 +216,7 @@ class TestBandSelection:
         assert (criteria.min_price_yen, criteria.max_price_yen) == (1, 1000)
         assert repository.apply_updates_calls[0][0] == "自動調査1000円以下"
         assert recorded[0][2:] == ["--sheet", "自動調査1000円以下", "--interval", "auto"]
+        assert recorded[1][2:] == ["--sheet", "自動調査1000円以下"]
 
     def test_タブ名から価格帯を読み取って探す(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000002")])
@@ -180,6 +255,8 @@ class TestBandSelection:
         ] == [(1, 1000), (1001, 2000)]
         assert [command[3] for command in recorded] == [
             "自動調査1000円以下",
+            "自動調査1000円以下",
+            "自動調査1000円-2000円",
             "自動調査1000円-2000円",
         ]
 
@@ -199,3 +276,30 @@ def _record(recorded: list[list[str]]):
         return subprocess.CompletedProcess(command, 0)
 
     return fake_run
+
+
+class TestRevenueFilter:
+    def test_月商が基準に満たないASINは積まない(self, monkeypatch) -> None:
+        keepa = FakeKeepa(
+            [Asin("B000000021"), Asin("B000000022")],
+            products=[
+                ProductInfo(asin=Asin("B000000021"), buy_box_price=900, monthly_sold=600),
+                ProductInfo(asin=Asin("B000000022"), buy_box_price=900, monthly_sold=100),
+            ],
+        )
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record([]))
+
+        run(_args(no_fetch=True), repository=repository, keepa=keepa)
+
+        written = repository.apply_updates_calls[0][1]
+        assert [columns[2] for columns in written.values()] == ["B000000021"]
+
+    def test_既知のASINは実測を問い合わせない(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000021"), Asin("B000000022")])
+        repository = FakeRepository(known={"B000000021"}, values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record([]))
+
+        run(_args(no_fetch=True), repository=repository, keepa=keepa)
+
+        assert [str(asin) for asin in keepa.fetched[0]] == ["B000000022"]

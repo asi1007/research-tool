@@ -15,6 +15,7 @@ from src.domain.value_objects.discovery_criteria import DiscoveryCriteria
 
 KEEPA_EPOCH = datetime(2011, 1, 1, tzinfo=timezone.utc)
 JAPAN_DOMAIN = 5
+MAX_ASINS_PER_REQUEST = 100
 _YYYYMMDD = re.compile(r"^\d{8}$")
 _BUY_BOX_CSV_KEYS = (18, 1, 0)
 MAX_TOKEN_WAIT_SECONDS = 300.0
@@ -69,6 +70,47 @@ class KeepaClient:
             return products[0]
 
         raise KeepaApiError(f"Keepa token exhausted after {MAX_TOKEN_RETRIES} retries: {asin}")
+
+    def fetch_products(self, asins: list[Asin]) -> list[ProductInfo]:
+        products: list[ProductInfo] = []
+
+        for start in range(0, len(asins), MAX_ASINS_PER_REQUEST):
+            chunk = asins[start : start + MAX_ASINS_PER_REQUEST]
+            products.extend(self._fetch_chunk(chunk))
+
+        return products
+
+    def _fetch_chunk(self, asins: list[Asin]) -> list[ProductInfo]:
+        for attempt in range(MAX_TOKEN_RETRIES):
+            response = self.session.get(
+                f"{self.base_url}/product",
+                params={
+                    "key": self.api_key,
+                    "domain": JAPAN_DOMAIN,
+                    "asin": ",".join(str(asin) for asin in asins),
+                    "stats": 1,
+                },
+                timeout=self.timeout,
+            )
+            payload = self._decode(response)
+            self.tokens_left = payload.get("tokensLeft", self.tokens_left)
+
+            if self._is_token_depleted(response, payload):
+                self._wait_for_refill(payload, asins[0], attempt)
+                continue
+
+            if response.status_code != 200:
+                raise KeepaApiError(
+                    f"Keepa API error: {response.status_code} - {response.text[:200]}"
+                )
+
+            return [
+                self.extract(asin, raw)
+                for raw in payload.get("products") or []
+                if (asin := Asin.parse(raw.get("asin"))) is not None
+            ]
+
+        raise KeepaApiError(f"Keepa token exhausted after {MAX_TOKEN_RETRIES} retries")
 
     def fetch_refill_rate_per_minute(self) -> int | None:
         try:

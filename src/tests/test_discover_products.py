@@ -2,8 +2,15 @@ from datetime import date
 
 import pytest
 
+from src.domain.entities.product_info import ProductInfo
 from src.domain.value_objects.asin import Asin
-from src.usecases.discover_products import known_asins, plan_append, select_new_asins
+from src.domain.value_objects.discovery_criteria import DiscoveryCriteria
+from src.usecases.discover_products import (
+    known_asins,
+    plan_append,
+    select_by_revenue,
+    select_new_asins,
+)
 
 CODE_ROW = ["んh", "CHECK2", "ASIN_SELL", "JAN"]
 HEADER_2 = ["", "", "ASIN", "GTIN"]
@@ -137,3 +144,26 @@ class TestPlanAppend:
 
         assert plan.updates == {4: {2: "B000000009", 3: "自動調査2026-08-29"}}
         assert plan.rows_to_add == 1
+
+
+class TestSelectByRevenue:
+    def _product(self, asin: str, price: float, sold: int) -> ProductInfo:
+        return ProductInfo(asin=Asin(asin), buy_box_price=price, monthly_sold=sold)
+
+    def test_月商が基準に満たない商品を落とす(self) -> None:
+        criteria = DiscoveryCriteria(min_price_yen=1001, max_price_yen=2000)
+        products = [
+            self._product("B000000001", 1500, 400),  # 60万
+            self._product("B000000002", 1200, 300),  # 36万
+            self._product("B000000003", 2000, 250),  # 50万ちょうど
+        ]
+
+        selected = select_by_revenue(products, criteria)
+
+        assert [str(asin) for asin in selected] == ["B000000001", "B000000003"]
+
+    def test_価格が取れない商品は落とす(self) -> None:
+        criteria = DiscoveryCriteria()
+        products = [self._product("B000000004", 0, 100_000)]
+
+        assert select_by_revenue(products, criteria) == []

@@ -28,6 +28,25 @@ def column_letter(index: int) -> str:
     return letters
 
 
+def last_filled_row(values: list[list]) -> int:
+    for row_number in range(len(values), 0, -1):
+        if any(str(cell).strip() for cell in values[row_number - 1]):
+            return row_number
+    return 0
+
+
+def plan_append_rows(values: list[list], rows: list[list]) -> dict[int, dict[int, object]]:
+    # gspread の append_rows は表の左端をシート側が判定するため、右へずれて書かれることがある。
+    # 行番号と列位置を自分で決めて書く
+    start = last_filled_row(values)
+    return {
+        start + offset + 1: {
+            index: cell for index, cell in enumerate(row) if str(cell).strip()
+        }
+        for offset, row in enumerate(rows)
+    }
+
+
 class SheetTable:
     def __init__(self, values: list[list], header_row: int = DEFAULT_HEADER_ROW) -> None:
         self.header_row = header_row
@@ -105,3 +124,31 @@ class GoogleSheetRepository:
 
         worksheet.batch_update(payload, value_input_option="USER_ENTERED")
         return len(payload)
+
+    def append_rows(self, sheet_name: str, rows: list[list]) -> int:
+        updates = plan_append_rows(self.read_values(sheet_name), rows)
+        if not updates:
+            return 0
+
+        self.ensure_rows(sheet_name, max(updates))
+        self.apply_updates(sheet_name, updates)
+        logger.info(
+            "行を追記しました",
+            extra={"context": {"sheet": sheet_name, "rows": len(updates)}},
+        )
+        return len(updates)
+
+    def delete_rows(self, sheet_name: str, row_numbers: list[int]) -> int:
+        if not row_numbers:
+            return 0
+
+        worksheet = self.spreadsheet.worksheet(sheet_name)
+        # 上から消すと以降の行番号がずれるため、必ず下から消す
+        for row_number in sorted(set(row_numbers), reverse=True):
+            worksheet.delete_rows(row_number)
+
+        logger.info(
+            "行を削除しました",
+            extra={"context": {"sheet": sheet_name, "rows": len(set(row_numbers))}},
+        )
+        return len(set(row_numbers))

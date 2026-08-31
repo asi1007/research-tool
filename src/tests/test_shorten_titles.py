@@ -10,6 +10,7 @@ from src.usecases.shorten_titles import (
     chunk_targets,
     extract_targets,
     parse_batch_response,
+    relocate_batch,
     strip_code_fence,
 )
 
@@ -436,3 +437,97 @@ class TestBuildUpdates:
         updates = build_updates(batch, {})
 
         assert updates == {}
+
+
+class TestRelocateBatch:
+    HEADER = [
+        ["んh", "CHECK2", "ASIN_SELL", "JAN", "UPC", "IMAGE", "TITLE_SELL", "TITLE_BUY"],
+        ["", "", "ASIN", "", "", "", "商品名", "商品名(BUY)"],
+        ["", "", "", "", "", "", "", ""],
+    ]
+
+    def _values(self, asins: list[str]) -> list[list]:
+        return self.HEADER + [["", "", asin, "", "", "", "商品名", ""] for asin in asins]
+
+    def _target(self, asin: str, row_number: int) -> TitleTarget:
+        return TitleTarget(
+            sheet="自動調査1000円-2000円",
+            row_number=row_number,
+            title="商品名",
+            title_buy_column=7,
+            asin=asin,
+        )
+
+    def test_行が挿入されて動いたASINの行番号に追従する(self) -> None:
+        batch = [self._target("B000000001", 4), self._target("B000000002", 5)]
+        values = self._values(["B000000009", "B000000001", "B000000002"])
+
+        result = relocate_batch(batch, values)
+
+        assert [target.row_number for target in result.targets] == [5, 6]
+        assert result.lost_indexes == set()
+
+    def test_ASIN列がURLでも突合できる(self) -> None:
+        batch = [self._target("B000000001", 4)]
+        values = self._values(["https://www.amazon.co.jp/dp/B000000001"])
+
+        result = relocate_batch(batch, values)
+
+        assert result.targets[0].row_number == 4
+        assert result.lost_indexes == set()
+
+    def test_消えたASINは書き込まない(self) -> None:
+        batch = [self._target("B000000001", 4), self._target("B000000002", 5)]
+        values = self._values(["B000000002"])
+
+        result = relocate_batch(batch, values)
+
+        assert result.lost_indexes == {0}
+        assert result.targets[1].row_number == 4
+
+    def test_同じASINが複数行にあるときはどちらにも書かない(self) -> None:
+        batch = [self._target("B000000001", 4)]
+        values = self._values(["B000000001", "B000000001"])
+
+        result = relocate_batch(batch, values)
+
+        assert result.lost_indexes == {0}
+
+    def test_ASINも商品名も一致しない対象は書き込まない(self) -> None:
+        batch = [self._target("", 4)]
+        values = self.HEADER + [["", "", "", "", "", "", "別の商品", ""]]
+
+        result = relocate_batch(batch, values)
+
+        assert result.lost_indexes == {0}
+
+    def test_ASINが無い行は商品名で引き直す(self) -> None:
+        batch = [self._target("", 4)]
+        values = self.HEADER + [
+            ["", "", "", "", "", "", "別の商品", ""],
+            ["", "", "", "", "", "", "商品名", ""],
+        ]
+
+        result = relocate_batch(batch, values)
+
+        assert result.targets[0].row_number == 5
+        assert result.lost_indexes == set()
+
+    def test_同じ商品名が複数行にあるときは書き込まない(self) -> None:
+        batch = [self._target("", 4)]
+        values = self.HEADER + [
+            ["", "", "", "", "", "", "商品名", ""],
+            ["", "", "", "", "", "", "商品名", ""],
+        ]
+
+        result = relocate_batch(batch, values)
+
+        assert result.lost_indexes == {0}
+
+    def test_書き込み先が埋まっていたら書き込まない(self) -> None:
+        batch = [self._target("B000000001", 4)]
+        values = self.HEADER + [["", "", "B000000001", "", "", "", "商品名", "既存の短縮名"]]
+
+        result = relocate_batch(batch, values)
+
+        assert result.lost_indexes == {0}
