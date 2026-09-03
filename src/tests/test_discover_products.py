@@ -167,3 +167,36 @@ class TestSelectByRevenue:
         products = [self._product("B000000004", 0, 100_000)]
 
         assert select_by_revenue(products, criteria) == []
+
+
+class TestSelectByCategory:
+    def _product(self, asin: str, root_category: int) -> ProductInfo:
+        return ProductInfo(
+            asin=Asin(asin),
+            buy_box_price=1000,
+            monthly_sold=1000,
+            root_category=root_category,
+        )
+
+    def test_除外カテゴリの商品を落とす(self) -> None:
+        criteria = DiscoveryCriteria()
+        products = [
+            self._product("B000000001", 3828871),   # ホーム＆キッチン
+            self._product("B000000002", 57239051),  # 食品・飲料・お酒
+        ]
+
+        selected = select_by_revenue(products, criteria)
+
+        assert [str(asin) for asin in selected] == ["B000000001"]
+
+    def test_categoryTreeが空でもrootCategoryで弾ける(self) -> None:
+        # Keepa の categories_exclude は categoryTree を見るため、
+        # ツリーが空の商品はクエリでは除外できない（2026-09-03 に食品が1件通った）
+        criteria = DiscoveryCriteria()
+
+        assert select_by_revenue([self._product("B000000003", 465392)], criteria) == []
+
+    def test_カテゴリ不明の商品は落とさない(self) -> None:
+        criteria = DiscoveryCriteria()
+
+        assert len(select_by_revenue([self._product("B000000004", 0)], criteria)) == 1

@@ -18,6 +18,7 @@ class ProductInfo:
     fba_fee: float = 0.0
     buy_box_price: float = 0.0
     monthly_sold: int = 0
+    root_category: int = 0
 
     @property
     def is_fetched(self) -> bool:

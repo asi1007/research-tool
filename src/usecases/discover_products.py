@@ -56,7 +56,14 @@ def select_by_revenue(
         product.asin
         for product in products
         if criteria.meets_revenue(product.buy_box_price, product.monthly_sold)
+        and not _is_excluded_category(product, criteria)
     ]
+
+
+def _is_excluded_category(product: ProductInfo, criteria: DiscoveryCriteria) -> bool:
+    # Keepa の categories_exclude は categoryTree を見るので、ツリーが空の商品は
+    # クエリで弾けない。実測した rootCategory でもう一度ふるいにかける
+    return product.root_category in criteria.excluded_categories
 
 
 @dataclass(frozen=True)
