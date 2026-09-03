@@ -130,3 +130,43 @@ class TestVariableClosingFee:
             }
         }
         assert SpApiClient.extract_fees(response)["fba_fee"] == 290
+
+
+class TestExtractCategory:
+    def test_表示グループの日本語名をカテゴリにする(self) -> None:
+        response = {
+            "salesRanks": [
+                {
+                    "marketplaceId": "A1VC38T7YXB528",
+                    "classificationRanks": [{"title": "浴室水栓用パーツ", "rank": 1}],
+                    "displayGroupRanks": [{"title": "DIY・工具・ガーデン", "rank": 90}],
+                }
+            ]
+        }
+
+        assert SpApiClient.extract_catalog(response)["category"] == "DIY・工具・ガーデン"
+
+    def test_表示グループが無ければ分類の名前を使う(self) -> None:
+        response = {
+            "salesRanks": [{"classificationRanks": [{"title": "浴室水栓用パーツ", "rank": 1}]}]
+        }
+
+        assert SpApiClient.extract_catalog(response)["category"] == "浴室水栓用パーツ"
+
+    def test_順位が無ければ空文字(self) -> None:
+        assert SpApiClient.extract_catalog({"salesRanks": []})["category"] == ""
+        assert SpApiClient.extract_catalog({})["category"] == ""
+
+    def test_順位が最も上のものを選ぶ(self) -> None:
+        response = {
+            "salesRanks": [
+                {
+                    "displayGroupRanks": [
+                        {"title": "ホーム＆キッチン", "rank": 500},
+                        {"title": "DIY・工具・ガーデン", "rank": 90},
+                    ]
+                }
+            ]
+        }
+
+        assert SpApiClient.extract_catalog(response)["category"] == "DIY・工具・ガーデン"

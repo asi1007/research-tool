@@ -15,6 +15,7 @@ FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "referral_fee": ("販売手数料",),
     "fba_fee": ("配送代行手数料（FBA手数料）", "FBA手数料+成約料"),
     "international_shipping": ("国際送料",),
+    "category": ("カテゴリ",),
 }
 
 WRITABLE_FIELDS: tuple[str, ...] = tuple(f for f in FIELD_ALIASES if f != "asin")

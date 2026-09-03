@@ -200,3 +200,31 @@ class TestSelectByCategory:
         criteria = DiscoveryCriteria()
 
         assert len(select_by_revenue([self._product("B000000004", 0)], criteria)) == 1
+
+
+class TestExcludedBrands:
+    def _product(self, asin: str, title: str) -> ProductInfo:
+        return ProductInfo(
+            asin=Asin(asin), title=title, buy_box_price=1000, monthly_sold=1000
+        )
+
+    def test_タカラトミーは対象外(self) -> None:
+        criteria = DiscoveryCriteria()
+        products = [
+            self._product("B000000001", "タカラトミー(TAKARA TOMY) トミカ 覆面パトロールカー"),
+            self._product("B000000002", "車用 ベビーミラー 後部座席"),
+        ]
+
+        selected = select_by_revenue(products, criteria)
+
+        assert [str(asin) for asin in selected] == ["B000000002"]
+
+    def test_英字表記でも弾く(self) -> None:
+        criteria = DiscoveryCriteria()
+
+        assert select_by_revenue([self._product("B000000003", "TAKARA TOMY Tomica")], criteria) == []
+
+    def test_商品名が空でも落ちない(self) -> None:
+        criteria = DiscoveryCriteria()
+
+        assert len(select_by_revenue([self._product("B000000004", "")], criteria)) == 1

@@ -39,6 +39,16 @@ EXCLUDED_SUB_CATEGORIES: tuple[int, ...] = (
 
 EXCLUDED_CATEGORIES: tuple[int, ...] = EXCLUDED_ROOT_CATEGORIES + EXCLUDED_SUB_CATEGORIES
 
+# 1688 に同款が無いブランド。Keepa のクエリでは絞れないので商品名で弾く
+EXCLUDED_BRANDS: tuple[str, ...] = (
+    "タカラトミー",
+    "takara tomy",
+    "オムロン",
+    "omron",
+    "コールマン",
+    "coleman",
+)
+
 STANDARD_PRODUCT_TYPE = 0
 NO_AMAZON_OFFER = -1
 

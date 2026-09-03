@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from src.domain.value_objects.discovery_criteria import (
+    EXCLUDED_BRANDS,
     EXCLUDED_CATEGORIES,
     EXCLUDED_ROOT_CATEGORIES,
     DiscoveryCriteria,
@@ -104,3 +105,10 @@ class TestPriceRange:
     def test_下限が上限を超えるなら作れない(self) -> None:
         with pytest.raises(ValueError, match="価格"):
             DiscoveryCriteria(min_price_yen=2001, max_price_yen=2000)
+
+
+class TestExcludedBrands:
+    def test_1688に同款が無いブランドを持つ(self) -> None:
+        lowered = {brand.lower() for brand in EXCLUDED_BRANDS}
+
+        assert {"タカラトミー", "takara tomy", "オムロン", "omron", "コールマン", "coleman"} <= lowered

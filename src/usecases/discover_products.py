@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 from datetime import date
 
 from src.domain.entities.product_info import ProductInfo
 from src.domain.value_objects.asin import Asin
-from src.domain.value_objects.discovery_criteria import DiscoveryCriteria
+from src.domain.value_objects.discovery_criteria import EXCLUDED_BRANDS, DiscoveryCriteria
 from src.infrastructure.column_codes import ColumnCodes
 
 ASIN_CODE = "ASIN_SELL"
@@ -57,7 +58,13 @@ def select_by_revenue(
         for product in products
         if criteria.meets_revenue(product.buy_box_price, product.monthly_sold)
         and not _is_excluded_category(product, criteria)
+        and not _is_excluded_brand(product)
     ]
+
+
+def _is_excluded_brand(product: ProductInfo) -> bool:
+    title = unicodedata.normalize("NFKC", product.title).lower()
+    return any(unicodedata.normalize("NFKC", brand).lower() in title for brand in EXCLUDED_BRANDS)
 
 
 def _is_excluded_category(product: ProductInfo, criteria: DiscoveryCriteria) -> bool:

@@ -163,7 +163,22 @@ class SpApiClient:
                 height_mm=SpApiClient._to_mm(package.get("height")),
             ),
             "weight_grams": SpApiClient._to_grams(package.get("weight")),
+            "category": SpApiClient._extract_category(response),
         }
+
+    @staticmethod
+    def _extract_category(response: dict) -> str:
+        # 表示グループ（DIY・工具・ガーデン等）が売り場に近い。無ければ細かい分類名で代用する
+        for key in ("displayGroupRanks", "classificationRanks"):
+            ranks = [
+                entry
+                for sales_rank in response.get("salesRanks") or []
+                for entry in sales_rank.get(key) or []
+                if entry.get("title")
+            ]
+            if ranks:
+                return str(min(ranks, key=lambda e: e.get("rank") or 0).get("title"))
+        return ""
 
     @staticmethod
     def extract_fees(response: dict) -> dict:

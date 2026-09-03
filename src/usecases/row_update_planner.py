@@ -55,6 +55,7 @@ class RowUpdatePlanner:
             "size_width": product.size.width_mm,
             "size_height": product.size.height_mm,
             "weight": product.weight_grams,
+            "category": product.category,
             "referral_fee": product.referral_fee,
             "fba_fee": product.fba_fee,
             "international_shipping": international_shipping,

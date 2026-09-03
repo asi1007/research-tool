@@ -78,6 +78,16 @@ M列の検索ワードごとの **`searchFrequencyRank`** を BT列『検索順�
 - **検索数ではなく順位。** セラースプライトの「検索数」とは別の指標なので、N列とは分けてある
 - 生成に1〜2分かかる。`GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT` は `asin` 必須で自社商品専用のため使えない
 
+## 1688 に同款が無いブランドは商品名で弾く
+
+`EXCLUDED_BRANDS`（`discovery_criteria.py`）に挙げたブランドは、実測後に**商品名で除外**する。
+Keepa のクエリではブランドを絞れないため。現在はタカラトミー・オムロン・コールマン。
+
+## カテゴリは SP-API の表示グループから取る
+
+`salesRanks[].displayGroupRanks[].title`（例「DIY・工具・ガーデン」）を使う。**日本語のまま入れる。**
+無ければ `classificationRanks[].title`（例「浴室水栓用パーツ」）で代用し、順位が最も上のものを選ぶ。
+
 ## 夏物・冬物は「季節商品」タブへ自動で移す
 
 `move_seasonal.py` が商品名から季節性を判定し、該当行を **季節商品タブへ移して元タブから削除する**。

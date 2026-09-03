@@ -44,6 +44,7 @@ class ProductInfoFetcher:
         if product.size.is_empty:
             product.size = catalog["size"]
         product.weight_grams = product.weight_grams or catalog["weight_grams"]
+        product.category = product.category or catalog["category"]
 
     def _apply_fees(self, asin: Asin, product: ProductInfo) -> None:
         if not product.buy_box_price or product.buy_box_price <= 0:
