@@ -115,6 +115,7 @@ def _args(**overrides: object) -> argparse.Namespace:
         "sheet": None,
         "all_sheets": False,
         "max_pages": None,
+        "max_lookups": None,
     }
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -393,3 +394,24 @@ class TestMaxPages:
         run(_args(dry_run=True, max_pages=1), repository=repository, keepa=keepa)
 
         assert keepa.max_pages == [1]
+
+
+class TestMaxLookups:
+    def test_実測する件数に上限をかける(self, monkeypatch) -> None:
+        # 実測は1件1トークン。補充が追いつかないと途中で落ちるので上限を設ける
+        keepa = FakeKeepa([Asin(f"B{index:09d}") for index in range(10)])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record([]))
+
+        run(_args(no_fetch=True, max_lookups=3), repository=repository, keepa=keepa)
+
+        assert len(keepa.fetched[0]) == 3
+
+    def test_既定では上限をかけない(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin(f"B{index:09d}") for index in range(10)])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record([]))
+
+        run(_args(no_fetch=True), repository=repository, keepa=keepa)
+
+        assert len(keepa.fetched[0]) == 10

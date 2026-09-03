@@ -48,6 +48,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--limit", type=int, help="追記する件数の上限（タブごと）")
     parser.add_argument(
+        "--max-lookups",
+        type=int,
+        help="月商を実測する件数の上限。1件1トークン消費するので枯渇を避けたいときに使う",
+    )
+    parser.add_argument(
         "--max-pages",
         type=int,
         help=f"Product Finder を引くページ数の上限（既定 {DEFAULT_MAX_PAGES}）。1ページ11トークン以上かかる",
@@ -172,6 +177,8 @@ def discover_band(
     found = keepa.find_asins(criteria, datetime.now(timezone.utc), max_pages=max_pages)
     # 実測は既知ASINを除いてから行う。Keepa のトークンは1件1消費なので無駄打ちを避ける
     unknown = select_new_asins(found, known)
+    if args.max_lookups is not None:
+        unknown = unknown[: args.max_lookups]
     fresh = [] if args.dry_run else select_new_by_revenue(args, unknown, criteria, keepa)
     known.update(str(asin) for asin in fresh)
 
