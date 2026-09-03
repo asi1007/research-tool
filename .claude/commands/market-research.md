@@ -12,7 +12,7 @@ Keepa Product Finder で「安い・売れてる・出たばかり」の商品�
 .venv/bin/python drop_marked.py --dry-run       # まず対象を見る
 .venv/bin/python drop_marked.py
 
-# 2〜3. 探索 → 商品情報の取得 → H列の短縮名 → M列の検索ワードとY列の広告単価まで一続きに走る
+# 2〜3. 探索 → 商品情報 → 短縮名 → 検索ワード/広告単価 → 季節商品の振り分け まで一続きに走る
 .venv/bin/python discover_products.py --all-sheets
 ```
 
@@ -25,6 +25,7 @@ Keepa Product Finder で「安い・売れてる・出たばかり」の商品�
 - `--no-fetch` … 自動調査タブへ ASIN を書くところで止める（商品情報も短縮名も取らない）
 - `--no-shorten` … H列の短縮名を書かない
 - `--no-keywords` … M列の検索ワードとY列の広告単価を書かない
+- `--no-seasonal` … 夏物・冬物を「季節商品」タブへ移さない
 - `--limit` … タブごとの追記件数の上限
 - `--max-pages` … Product Finder を引くページ数の上限（既定 20）。トークンが少ないときに絞る
 - `--debug` … DEBUG ログを出す
@@ -76,6 +77,22 @@ M列の検索ワードごとの **`searchFrequencyRank`** を BT列『検索順�
 - レポートは **43万〜130万語・数十MB**。週次更新なので `data/search_rank_YYYY-MM-DD.json` にキャッシュし、同じ週は取り直さない
 - **検索数ではなく順位。** セラースプライトの「検索数」とは別の指標なので、N列とは分けてある
 - 生成に1〜2分かかる。`GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT` は `asin` 必須で自社商品専用のため使えない
+
+## 夏物・冬物は「季節商品」タブへ自動で移す
+
+`move_seasonal.py` が商品名から季節性を判定し、該当行を **季節商品タブへ移して元タブから削除する**。
+`discover_products.py` の最後に走るので、通常は個別に叩かなくてよい。
+
+```bash
+.venv/bin/python move_seasonal.py --dry-run     # 対象を見る
+.venv/bin/python move_seasonal.py               # 全自動調査タブから移す
+```
+
+- **判定は商品名のキーワード**（`src/usecases/seasonal.py`）。夏物は日傘・扇風機・冷感・氷嚢・水着・浮き輪・UVカットなど、
+  冬物は電熱・ヒーター・湯たんぽ・防寒など。季節商品タブには既に冬物（電熱ベスト等）が入っていたので同じ扱いにした
+- **パイプラインの最後に置く。** 商品名が入っていないと判定できないため、`fetch_products` より後に走らせる
+- **プールバッグ・夏用キャップ・水着インナーも移す**（2026-09-03 にユーザー判断）。
+  「プール」「涼」「水着」で拾うため、バッグや帽子でも夏向けの商品は季節商品に入る
 
 ## A列の「d」は候補外へ移す
 

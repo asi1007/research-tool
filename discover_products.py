@@ -53,6 +53,11 @@ def parse_args() -> argparse.Namespace:
         help=f"Product Finder を引くページ数の上限（既定 {DEFAULT_MAX_PAGES}）。1ページ11トークン以上かかる",
     )
     parser.add_argument(
+        "--no-seasonal",
+        action="store_true",
+        help="夏物・冬物を「季節商品」タブへ移さない",
+    )
+    parser.add_argument(
         "--no-keywords",
         action="store_true",
         help="M列『検索ワード』とY列『広告単価』の書き込みを行わない",
@@ -103,6 +108,15 @@ def keyword_command(sheet: str) -> list[str]:
     return [
         sys.executable,
         str(PROJECT_ROOT / "fill_keywords.py"),
+        "--sheet",
+        sheet,
+    ]
+
+
+def seasonal_command(sheet: str) -> list[str]:
+    return [
+        sys.executable,
+        str(PROJECT_ROOT / "move_seasonal.py"),
         "--sheet",
         sheet,
     ]
@@ -192,9 +206,11 @@ def complete_rows(args: argparse.Namespace, sheet: str) -> int:
     # 商品情報の取得が一部失敗しても、取れた行の短縮名は書けるので続行する
     exit_code = subprocess.run(fetch_command(sheet), cwd=PROJECT_ROOT, check=False).returncode
 
+    # 季節商品への振り分けは最後。商品名が入っていないと判定できない
     for skipped, command in (
         (args.no_shorten, shorten_command(sheet)),
         (args.no_keywords, keyword_command(sheet)),
+        (args.no_seasonal, seasonal_command(sheet)),
     ):
         if skipped:
             continue

@@ -5,7 +5,13 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 import discover_products
-from discover_products import fetch_command, keyword_command, run, shorten_command
+from discover_products import (
+    fetch_command,
+    keyword_command,
+    run,
+    seasonal_command,
+    shorten_command,
+)
 from src.domain.entities.product_info import ProductInfo
 from src.domain.value_objects.asin import Asin
 
@@ -25,6 +31,15 @@ class TestKeywordCommand:
 
         assert command[0] == sys.executable
         assert command[1].endswith("fill_keywords.py")
+        assert command[2:] == ["--sheet", "自動調査"]
+
+
+class TestSeasonalCommand:
+    def test_同じvenvのpythonでmove_seasonalを呼ぶ(self) -> None:
+        command = seasonal_command("自動調査")
+
+        assert command[0] == sys.executable
+        assert command[1].endswith("move_seasonal.py")
         assert command[2:] == ["--sheet", "自動調査"]
 
 
@@ -96,6 +111,7 @@ def _args(**overrides: object) -> argparse.Namespace:
         "no_fetch": False,
         "no_shorten": False,
         "no_keywords": False,
+        "no_seasonal": False,
         "sheet": None,
         "all_sheets": False,
         "max_pages": None,
@@ -146,7 +162,7 @@ class TestRun:
         assert result == 0
         assert repository.apply_updates_calls == []
         assert repository.ensure_rows_calls == []
-        assert len(recorded_commands) == 3
+        assert len(recorded_commands) == 4
 
     def test_no_fetchのときsubprocess_runが呼ばれない(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000009")])
@@ -177,7 +193,17 @@ class TestShortenTitles:
             "fetch_products.py",
             "shorten_titles.py",
             "fill_keywords.py",
+            "move_seasonal.py",
         ]
+
+    def test_no_seasonalのとき季節商品へ移さない(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000015")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record(recorded := []))
+
+        run(_args(no_seasonal=True), repository=repository, keepa=keepa)
+
+        assert "move_seasonal.py" not in [Path(command[1]).name for command in recorded]
 
     def test_no_keywordsのとき検索ワードは書き込まない(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000014")])
@@ -189,6 +215,7 @@ class TestShortenTitles:
         assert [Path(command[1]).name for command in recorded] == [
             "fetch_products.py",
             "shorten_titles.py",
+            "move_seasonal.py",
         ]
 
     def test_no_shortenのとき短縮名は書き込まない(self, monkeypatch) -> None:
@@ -201,6 +228,7 @@ class TestShortenTitles:
         assert [Path(command[1]).name for command in recorded] == [
             "fetch_products.py",
             "fill_keywords.py",
+            "move_seasonal.py",
         ]
 
     def test_no_fetchのとき短縮名も書き込まない(self, monkeypatch) -> None:
@@ -230,6 +258,7 @@ class TestShortenTitles:
             "fetch_products.py",
             "shorten_titles.py",
             "fill_keywords.py",
+            "move_seasonal.py",
         ]
         assert result == 1
 
@@ -248,6 +277,7 @@ class TestBandSelection:
         assert recorded[0][2:] == ["--sheet", "自動調査1000円以下", "--interval", "auto"]
         assert recorded[1][2:] == ["--sheet", "自動調査1000円以下"]
         assert recorded[2][2:] == ["--sheet", "自動調査1000円以下"]
+        assert recorded[3][2:] == ["--sheet", "自動調査1000円以下"]
 
     def test_タブ名から価格帯を読み取って探す(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000002")])
@@ -284,14 +314,9 @@ class TestBandSelection:
         assert [
             (criteria.min_price_yen, criteria.max_price_yen) for criteria in keepa.criteria
         ] == [(1, 1000), (1001, 2000)]
-        assert [command[3] for command in recorded] == [
-            "自動調査1000円以下",
-            "自動調査1000円以下",
-            "自動調査1000円以下",
-            "自動調査1000円-2000円",
-            "自動調査1000円-2000円",
-            "自動調査1000円-2000円",
-        ]
+        assert [command[3] for command in recorded] == ["自動調査1000円以下"] * 4 + [
+            "自動調査1000円-2000円"
+        ] * 4
 
     def test_allのとき前のタブで積んだASINは次のタブへ積まない(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000005")])
