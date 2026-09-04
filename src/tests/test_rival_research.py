@@ -138,3 +138,45 @@ class TestPlanRivalRows:
 
     def test_候補が無ければ挿入しない(self) -> None:
         assert plan_rival_rows(base_row=10, count=0) is None
+
+
+class TestPlacementsAreComplete:
+    def test_採用件数から漏れた経路の順位もラベルに載せる(self) -> None:
+        merged = merge_candidates(
+            {
+                RELATED: [
+                    ("B000000001", "A", 1),
+                    ("B000000002", "B", 2),
+                    ("B000000003", "C", 3),
+                    ("B000000009", "Z", 6),
+                ],
+                SEARCH: [("B000000009", "Z", 5)],
+            },
+            limit_per_source=3,
+        )
+
+        found = {c.asin.value: c.rank_label() for c in merged}
+        assert found["B000000009"] == "関連6\n検索5"
+
+    def test_どの経路でも上位に入らない候補は採用しない(self) -> None:
+        merged = merge_candidates(
+            {
+                RELATED: [(f"B00000000{i}", f"商品{i}", i) for i in range(1, 5)],
+                SEARCH: [(f"B00000000{i}", f"商品{i}", i) for i in range(1, 5)],
+            },
+            limit_per_source=3,
+        )
+
+        assert [c.asin.value for c in merged] == ["B000000001", "B000000002", "B000000003"]
+
+    def test_採用は経路ごとの上位で決まり順位は経路順に並ぶ(self) -> None:
+        merged = merge_candidates(
+            {
+                RELATED: [("B000000001", "A", 4)],
+                SEARCH: [("B000000001", "A", 1)],
+                RANKING: [("B000000001", "A", 9)],
+            },
+            limit_per_source=1,
+        )
+
+        assert merged[0].rank_label() == "関連4\n検索1\nランキング9"

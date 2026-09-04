@@ -28,13 +28,13 @@ def merge_candidates(
     titles: dict[str, str] = {}
     placements: dict[str, list[RivalPlacement]] = {}
     order: list[str] = []
+    adopted: set[str] = set()
 
+    # 採用は経路ごとの上位 limit_per_source 件で決めるが、順位ラベルには
+    # 採用に使わなかった経路の順位も載せる（同じ商品が何経路に出ているかが要る）
     for source in SOURCE_ORDER:
-        taken = 0
+        rank_in_source = 0
         for raw_asin, title, raw_rank in sources.get(source) or []:
-            if taken >= limit_per_source:
-                break
-
             asin = Asin.parse(raw_asin)
             rank = _to_rank(raw_rank)
             if asin is None or rank is None:
@@ -42,12 +42,15 @@ def merge_candidates(
             if exclude is not None and asin.value == exclude.value:
                 continue
 
-            taken += 1
+            rank_in_source += 1
             if asin.value not in placements:
                 placements[asin.value] = []
                 titles[asin.value] = title
                 order.append(asin.value)
             placements[asin.value].append(RivalPlacement(source=source, rank=rank))
+
+            if rank_in_source <= limit_per_source:
+                adopted.add(asin.value)
 
     candidates = [
         RivalCandidate(
@@ -56,6 +59,7 @@ def merge_candidates(
             placements=tuple(placements[value]),
         )
         for value in order
+        if value in adopted
     ]
     return sorted(candidates, key=lambda candidate: candidate.sort_key())
 

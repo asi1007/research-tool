@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
 import sys
@@ -122,6 +123,44 @@ def run_target(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_collect(args: argparse.Namespace) -> int:
+    from src.infrastructure.rival_scraper import RivalScraper
+
+    asin = Asin.parse(args.asin)
+    if asin is None:
+        print(f"ASIN として読めません: {args.asin}", file=sys.stderr)
+        return 1
+
+    repository = load_repository()
+    target = find_target(repository, asin)
+    if target is None:
+        print(f"{asin.value} の行が見つかりません", file=sys.stderr)
+        return 1
+    if not target.keyword:
+        print(
+            "J列『検索ワード』が空です。fill_keywords.py を先に流してください",
+            file=sys.stderr,
+        )
+        return 1
+
+    scraper = RivalScraper(headless=not args.headed)
+    collected = asyncio.run(scraper.collect(asin.value, target.keyword, limit=args.depth))
+
+    payload = {"asin": asin.value, "title": target.title, "keyword": target.keyword, **collected}
+    if args.out:
+        Path(args.out).write_text(json.dumps(payload, ensure_ascii=False, indent=1))
+        print(f"{args.out} へ書き出しました")
+        for source in SOURCES:
+            print(f"\n[{source}] {len(payload[source])}件")
+            for item in payload[source]:
+                own = "  ← 自社" if item["asin"] == asin.value else ""
+                print(f"  {item['rank']:>3}  {item['asin']}  {item['title'][:44]}{own}")
+        return 0
+
+    print(json.dumps(payload, ensure_ascii=False, indent=1))
+    return 0
+
+
 def run_write(args: argparse.Namespace) -> int:
     asin = Asin.parse(args.asin)
     if asin is None:
@@ -189,6 +228,13 @@ def main() -> int:
     target = sub.add_parser("target", help="ASIN の行・検索ワードを調べる")
     target.add_argument("asin")
     target.set_defaults(func=run_target)
+
+    collect = sub.add_parser("collect", help="3経路をブラウザで読んで候補を出す")
+    collect.add_argument("asin")
+    collect.add_argument("--out", help="書き出す JSON のパス")
+    collect.add_argument("--depth", type=int, default=12, help="経路ごとに読む件数（既定 12）")
+    collect.add_argument("--headed", action="store_true", help="ブラウザを表示して実行する")
+    collect.set_defaults(func=run_collect)
 
     write = sub.add_parser("write", help="収集した候補を行として挿入する")
     write.add_argument("asin")
