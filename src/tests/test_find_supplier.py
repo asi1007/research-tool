@@ -241,3 +241,31 @@ class TestBuildTargetsResult:
         assert targets == []
         assert error is not None
         assert "LINK_LOWEST" in error
+
+
+class TestRowAsinMatches:
+    def test_期待するASINと一致すればTrue(self) -> None:
+        from find_supplier import row_asin_matches
+
+        values = [["CODE"], [""], ["ASIN"], ["B000000001"], ["B000000002"]]
+
+        assert row_asin_matches(values, row_number=5, asin_column=0, expected="B000000002") is True
+
+    def test_ずれていればFalse(self) -> None:
+        from find_supplier import row_asin_matches
+
+        values = [["CODE"], [""], ["ASIN"], ["B000000001"], ["B000000002"]]
+
+        assert row_asin_matches(values, row_number=4, asin_column=0, expected="B000000002") is False
+
+    def test_ASIN列がURLでも照合できる(self) -> None:
+        from find_supplier import row_asin_matches
+
+        values = [["CODE"], [""], ["ASIN"], ["https://www.amazon.co.jp/dp/B000000001"]]
+
+        assert row_asin_matches(values, row_number=4, asin_column=0, expected="B000000001") is True
+
+    def test_行が無ければFalse(self) -> None:
+        from find_supplier import row_asin_matches
+
+        assert row_asin_matches([["CODE"]], row_number=99, asin_column=0, expected="B000000001") is False

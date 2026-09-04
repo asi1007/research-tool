@@ -119,8 +119,12 @@ ASIN で引いていたため取り違えを免れた。**
 11. 書き戻す
 
     ```bash
-    .venv/bin/python find_supplier.py write --sheet "<シート名>" --row <行番号> --candidates <JSONファイル>
+    .venv/bin/python find_supplier.py write --sheet "<シート名>" --row <行番号> --asin <ASIN> --candidates <JSONファイル>
     ```
+
+    **`--asin` を必ず付ける。** 対象行の ASIN が一致しなければ書き込まずに止まる。
+    行番号だけを頼りにすると、他のジョブが行を挿入・削除したときに別商品へ書く
+    （2026-09-05 に `fetch_products` が同じ理由で8行ずれた）。
 
 ## 手数を減らす（browser_batch でまとめる）
 

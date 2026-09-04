@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.domain.entities.supplier_candidate import SupplierCandidate
+from src.domain.value_objects.asin import Asin
 from src.infrastructure.candidate_parser import parse_candidates
 from src.infrastructure.cell_highlighter import apply_highlight
 from src.infrastructure.column_codes import ColumnCodes
@@ -118,6 +119,21 @@ def describe_candidates(candidates: list[SupplierCandidate]) -> list[dict]:
     ]
 
 
+def row_asin_matches(
+    values: list[list], row_number: int, asin_column: int, expected: str
+) -> bool:
+    """書き込む行が期待した商品かを確かめる。
+
+    行番号は他のジョブの挿入・削除でずれる。2026-08-28 に1行ずれており、
+    2026-09-05 には fetch_products が同じ理由で8行ずれた。
+    """
+    cell = read_cell(values, row_number, asin_column)
+    if cell is None:
+        return False
+    asin = Asin.parse(cell)
+    return asin is not None and asin.value == expected
+
+
 class HighlightError(Exception):
     def __init__(self, row: int, columns: list[str]) -> None:
         super().__init__(f"背景色の設定に失敗しました: row={row} columns={columns}")
@@ -194,6 +210,17 @@ def run_write(args: argparse.Namespace) -> int:
             extra={"context": {"missing_codes": missing}},
         )
         return 1
+
+    # 行番号は他のジョブの挿入・削除でずれる。ASIN を渡されたら一致を確かめてから書く
+    if args.asin:
+        asin_index = codes.index_of("ASIN_SELL")
+        if asin_index is None or not row_asin_matches(values, args.row, asin_index, args.asin):
+            actual = read_cell(values, args.row, asin_index) if asin_index is not None else None
+            logger.error(
+                "対象行の ASIN が一致しないため書き込みません（行がずれています）",
+                extra={"context": {"row": args.row, "expected": args.asin, "actual": actual}},
+            )
+            return 1
 
     link_index = codes.index_of("LINK_LOWEST")
     state = link_lowest_state(values, args.row, link_index)
@@ -276,6 +303,7 @@ def main() -> int:
     write = subparsers.add_parser("write")
     write.add_argument("--sheet", required=True)
     write.add_argument("--row", type=int, required=True)
+    write.add_argument("--asin", help="対象行の ASIN。指定すると行がずれていないか確かめる")
     write.add_argument("--candidates", required=True)
     write.set_defaults(func=run_write)
 
