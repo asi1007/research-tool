@@ -27,6 +27,7 @@ from src.usecases.rival_research import (
     is_raw_collect_output,
     merge_candidates,
     plan_column_insert,
+    prunable_rows,
     plan_rival_rows,
 )
 
@@ -228,6 +229,48 @@ def run_write(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_prune(args: argparse.Namespace) -> int:
+    repository = load_repository()
+    total = 0
+
+    # タブごとに read_values を呼ぶと読み取りクォータ（60req/分）に当たる。
+    # 全タブを values_batch_get で1回に読む
+    for sheet, values in repository.read_all_values().items():
+        if not values or (args.sheet and sheet not in args.sheet):
+            continue
+        codes = ColumnCodes(values)
+        asin_index = codes.index_of(ASIN_CODE)
+        rank_index = codes.index_of(RANK_CODE)
+        if asin_index is None or rank_index is None:
+            continue
+
+        headers = {normalize_header(h): i for i, h in enumerate(SheetTable(values).headers)}
+        title_index = headers.get("商品名")
+        if title_index is None:
+            continue
+
+        rows = prunable_rows(
+            values,
+            asin_column=asin_index,
+            rank_column=rank_index,
+            title_column=title_index,
+            header_rows=DEFAULT_HEADER_ROW,
+        )
+        if not rows:
+            continue
+
+        for row_number in rows:
+            row = values[row_number - 1]
+            print(f"{sheet}\t{row_number}\t{row[asin_index]}\t{str(row[title_index])[:40]}")
+        total += len(rows)
+
+        if not args.dry_run:
+            repository.delete_rows(sheet, rows)
+
+    print(f"\n合計 {total} 行" + ("（--dry-run のため消していません）" if args.dry_run else " 削除しました"))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="ライバル商品調査")
     parser.add_argument("--debug", action="store_true")
@@ -243,6 +286,11 @@ def main() -> int:
     collect.add_argument("--depth", type=int, default=12, help="経路ごとに読む件数（既定 12）")
     collect.add_argument("--headed", action="store_true", help="ブラウザを表示して実行する")
     collect.set_defaults(func=run_collect)
+
+    prune = sub.add_parser("prune", help="除外ブランドのライバル行を消す")
+    prune.add_argument("--sheet", action="append", help="対象タブ（省略時は全タブ）")
+    prune.add_argument("--dry-run", action="store_true")
+    prune.set_defaults(func=run_prune)
 
     write = sub.add_parser("write", help="収集した候補を行として挿入する")
     write.add_argument("asin")

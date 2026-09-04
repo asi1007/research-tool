@@ -5,9 +5,22 @@ from src.domain.entities.rival_candidate import (
     RivalCandidate,
     RivalPlacement,
 )
+import unicodedata
+
 from src.domain.value_objects.asin import Asin
+from src.domain.value_objects.discovery_criteria import EXCLUDED_BRANDS
 
 DEFAULT_LIMIT_PER_SOURCE = 3
+
+
+def _normalize(text: str) -> str:
+    return unicodedata.normalize("NFKC", text).lower()
+
+
+def is_excluded_brand(title: str) -> bool:
+    # 有名ブランドは同じ棚に並んでも中国輸入の競合にならないので候補にしない
+    lowered = _normalize(title)
+    return any(_normalize(brand) in lowered for brand in EXCLUDED_BRANDS)
 
 
 def _to_rank(raw: object) -> int | None:
@@ -40,6 +53,8 @@ def merge_candidates(
             if asin is None or rank is None:
                 continue
             if exclude is not None and asin.value == exclude.value:
+                continue
+            if is_excluded_brand(title):
                 continue
 
             rank_in_source += 1
@@ -103,3 +118,23 @@ def is_raw_collect_output(payload: dict) -> bool:
     # collect は ranking_url を付けて返す。絞り込まずにそのまま write へ渡すと
     # 同一判定を飛ばして無関係な商品まで行になるので、これで見分ける
     return "ranking_url" in payload
+
+
+def prunable_rows(
+    values: list[list],
+    asin_column: int,
+    rank_column: int,
+    title_column: int,
+    header_rows: int,
+) -> list[int]:
+    # 順位が入っている行だけがライバル調査で足した行。自社の行を消さないための目印になる
+    rows: list[int] = []
+    for offset, row in enumerate(values[header_rows:]):
+        def read(index: int) -> str:
+            return str(row[index]).strip() if index < len(row) else ""
+
+        if not read(rank_column) or Asin.parse(read(asin_column)) is None:
+            continue
+        if is_excluded_brand(read(title_column)):
+            rows.append(header_rows + offset + 1)
+    return rows

@@ -40,6 +40,9 @@ EXCLUDED_SUB_CATEGORIES: tuple[int, ...] = (
 EXCLUDED_CATEGORIES: tuple[int, ...] = EXCLUDED_ROOT_CATEGORIES + EXCLUDED_SUB_CATEGORIES
 
 # 1688 に同款が無いブランド。Keepa のクエリでは絞れないので商品名で弾く
+# 1688 に同款が無く、中国輸入の競合にもならないブランド。
+# 市場調査（自動調査タブへ積むか）とライバル調査（比較対象にするか）の両方で弾く。
+# 英語表記は誤爆しやすい短い綴り（lec / muji 等）を入れない。
 EXCLUDED_BRANDS: tuple[str, ...] = (
     "タカラトミー",
     "takara tomy",
@@ -47,6 +50,21 @@ EXCLUDED_BRANDS: tuple[str, ...] = (
     "omron",
     "コールマン",
     "coleman",
+    # 日本の生活雑貨メーカー。自社ブランド品なので同じ棚に並んでも競合にならない
+    "レック",
+    "ダルトン",
+    "dulton",
+    "山崎実業",
+    "山崎産業",
+    "yamazaki",
+    "無印良品",
+    "マーナ",
+    "marna",
+    "アイリスオーヤマ",
+    "iris ohyama",
+    "ニトリ",
+    "貝印",
+    "パール金属",
 )
 
 STANDARD_PRODUCT_TYPE = 0

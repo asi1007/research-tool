@@ -197,3 +197,105 @@ class TestIsRawCollectOutput:
         from src.usecases.rival_research import is_raw_collect_output
 
         assert is_raw_collect_output({"関連": [], "検索": [], "ランキング": []}) is False
+
+
+class TestExcludedBrands:
+    def test_有名ブランドは候補から外す(self) -> None:
+        merged = merge_candidates(
+            {
+                SEARCH: [
+                    ("B000000001", "ダルトン(Dulton) 4ホール トゥースブラシホルダー", 1),
+                    ("B000000002", "Luxspire 歯ブラシスタンド ステンレス製", 2),
+                ]
+            }
+        )
+
+        assert [c.asin.value for c in merged] == ["B000000002"]
+
+    def test_レックも外す(self) -> None:
+        merged = merge_candidates(
+            {SEARCH: [("B000000001", "レック ステンレス 歯ブラシスタンド 置き型", 1)]}
+        )
+
+        assert merged == []
+
+    def test_全角や大文字小文字の違いを吸収する(self) -> None:
+        merged = merge_candidates(
+            {SEARCH: [("B000000001", "ＤＵＬＴＯＮ トゥースブラシホルダー", 1)]}
+        )
+
+        assert merged == []
+
+    def test_除外しても件数の上限は残りで満たす(self) -> None:
+        merged = merge_candidates(
+            {
+                SEARCH: [
+                    ("B000000001", "山崎実業 歯ブラシスタンド", 1),
+                    ("B000000002", "A社 歯ブラシスタンド", 2),
+                    ("B000000003", "B社 歯ブラシスタンド", 3),
+                    ("B000000004", "C社 歯ブラシスタンド", 4),
+                ]
+            },
+            limit_per_source=3,
+        )
+
+        assert [c.asin.value for c in merged] == ["B000000002", "B000000003", "B000000004"]
+
+    def test_順位は元のまま保つ(self) -> None:
+        merged = merge_candidates(
+            {
+                SEARCH: [
+                    ("B000000001", "無印良品 歯ブラシスタンド", 1),
+                    ("B000000002", "A社 歯ブラシスタンド", 2),
+                ]
+            }
+        )
+
+        assert merged[0].rank_label() == "検索2"
+
+
+class TestPrunableRows:
+    def test_順位が入っている行のうち除外ブランドを拾う(self) -> None:
+        from src.usecases.rival_research import prunable_rows
+
+        values = [
+            ["ASIN_SELL", "RIVAL_RANK", "TITLE_SELL"],
+            ["", "", ""],
+            ["ASIN", "順位", "商品名"],
+            ["B000000001", "", "自社の商品"],
+            ["B000000002", "検索3", "ダルトン(Dulton) 4ホール"],
+            ["B000000003", "検索5", "Luxspire 歯ブラシスタンド"],
+            ["B000000004", "ランキング9", "レック ステンレス 歯ブラシスタンド"],
+        ]
+
+        rows = prunable_rows(values, asin_column=0, rank_column=1, title_column=2, header_rows=3)
+
+        assert rows == [5, 7]
+
+    def test_順位が空の行は対象にしない(self) -> None:
+        from src.usecases.rival_research import prunable_rows
+
+        values = [
+            ["ASIN_SELL", "RIVAL_RANK", "TITLE_SELL"],
+            ["", "", ""],
+            ["ASIN", "順位", "商品名"],
+            ["B000000001", "", "レック ステンレス 歯ブラシスタンド"],
+        ]
+
+        rows = prunable_rows(values, asin_column=0, rank_column=1, title_column=2, header_rows=3)
+
+        assert rows == []
+
+    def test_ASINが無い行は対象にしない(self) -> None:
+        from src.usecases.rival_research import prunable_rows
+
+        values = [
+            ["ASIN_SELL", "RIVAL_RANK", "TITLE_SELL"],
+            ["", "", ""],
+            ["ASIN", "順位", "商品名"],
+            ["", "検索3", "ダルトン(Dulton)"],
+        ]
+
+        rows = prunable_rows(values, asin_column=0, rank_column=1, title_column=2, header_rows=3)
+
+        assert rows == []
