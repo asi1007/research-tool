@@ -15,6 +15,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 DEFAULT_HEADER_ROW = 3
+# 1行目は列コード（見出しと違い並べ替えや改名の影響を受けない識別子）
+CODE_ROW = 1
 # IMAGE() や HYPERLINK() のセルは表示値が空になるため、数式のまま読まないと空欄と誤判定する
 FORMULA_RENDER_OPTION = "FORMULA"
 
@@ -137,6 +139,68 @@ class GoogleSheetRepository:
             extra={"context": {"sheet": sheet_name, "rows": len(updates)}},
         )
         return len(updates)
+
+    def insert_rows_at(self, sheet_name: str, start_row: int, count: int) -> int:
+        if count <= 0:
+            return 0
+
+        worksheet = self.spreadsheet.worksheet(sheet_name)
+        # 数式の相対参照を下の行から引き継がせたいので、直前の行の書式を継承する
+        self.spreadsheet.batch_update(
+            {
+                "requests": [
+                    {
+                        "insertDimension": {
+                            "range": {
+                                "sheetId": worksheet.id,
+                                "dimension": "ROWS",
+                                "startIndex": start_row - 1,
+                                "endIndex": start_row - 1 + count,
+                            },
+                            "inheritFromBefore": True,
+                        }
+                    }
+                ]
+            }
+        )
+        logger.info(
+            "行を挿入しました",
+            extra={"context": {"sheet": sheet_name, "start_row": start_row, "count": count}},
+        )
+        return count
+
+    def insert_column_at(self, sheet_name: str, index: int, header: str, code: str) -> int:
+        worksheet = self.spreadsheet.worksheet(sheet_name)
+        self.spreadsheet.batch_update(
+            {
+                "requests": [
+                    {
+                        "insertDimension": {
+                            "range": {
+                                "sheetId": worksheet.id,
+                                "dimension": "COLUMNS",
+                                "startIndex": index,
+                                "endIndex": index + 1,
+                            },
+                            "inheritFromBefore": False,
+                        }
+                    }
+                ]
+            }
+        )
+        letter = column_letter(index)
+        worksheet.batch_update(
+            [
+                {"range": f"{letter}{CODE_ROW}", "values": [[code]]},
+                {"range": f"{letter}{DEFAULT_HEADER_ROW}", "values": [[header]]},
+            ],
+            value_input_option="USER_ENTERED",
+        )
+        logger.info(
+            "列を挿入しました",
+            extra={"context": {"sheet": sheet_name, "column": letter, "code": code}},
+        )
+        return index
 
     def delete_rows(self, sheet_name: str, row_numbers: list[int]) -> int:
         if not row_numbers:

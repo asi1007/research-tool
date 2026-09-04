@@ -135,3 +135,27 @@ class TestReadAllValues:
         assert ranges == ["'優先'", "'候補'", "'自動調査'"]
         assert params == {"valueRenderOption": FORMULA_RENDER_OPTION}
         assert result == {"優先": [["a"]], "候補": [["b"]], "自動調査": []}
+
+
+class TestPlanColumnInsert:
+    def test_列コードが無ければ挿入位置を返す(self) -> None:
+        from src.usecases.rival_research import plan_column_insert
+
+        codes = ["", "CHECK2", "ASIN_SELL", "IMAGE", "TITLE_SELL", "TITLE_BUY"]
+
+        assert plan_column_insert(codes, after_code="TITLE_SELL", new_code="RIVAL_RANK") == 5
+
+    def test_既に列コードがあれば挿入しない(self) -> None:
+        from src.usecases.rival_research import plan_column_insert
+
+        codes = ["ASIN_SELL", "TITLE_SELL", "RIVAL_RANK", "TITLE_BUY"]
+
+        assert plan_column_insert(codes, after_code="TITLE_SELL", new_code="RIVAL_RANK") is None
+
+    def test_基準の列コードが無ければ例外(self) -> None:
+        import pytest
+
+        from src.usecases.rival_research import plan_column_insert
+
+        with pytest.raises(ValueError, match="TITLE_SELL"):
+            plan_column_insert(["ASIN_SELL"], after_code="TITLE_SELL", new_code="RIVAL_RANK")
