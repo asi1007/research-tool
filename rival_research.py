@@ -24,6 +24,7 @@ from src.infrastructure.sheet_repository import (
 )
 from src.usecases.rival_research import (
     build_rival_updates,
+    is_raw_collect_output,
     merge_candidates,
     plan_column_insert,
     plan_rival_rows,
@@ -168,6 +169,13 @@ def run_write(args: argparse.Namespace) -> int:
         return 1
 
     payload = json.loads(Path(args.candidates).read_text())
+    if is_raw_collect_output(payload) and not args.allow_raw:
+        print(
+            "collect の生出力をそのまま渡しています。ほぼ同一の候補だけ残した JSON を作ってください"
+            "（意図してそのまま使うなら --allow-raw）",
+            file=sys.stderr,
+        )
+        return 1
     sources = {
         source: [
             (item.get("asin"), item.get("title", ""), item.get("rank"))
@@ -240,6 +248,7 @@ def main() -> int:
     write.add_argument("asin")
     write.add_argument("--candidates", required=True, help="経路ごとの候補を入れた JSON")
     write.add_argument("--limit", type=int, default=3, help="経路ごとの採用件数（既定 3）")
+    write.add_argument("--allow-raw", action="store_true", help="collect の生出力をそのまま使う")
     write.add_argument("--dry-run", action="store_true")
     write.set_defaults(func=run_write)
 

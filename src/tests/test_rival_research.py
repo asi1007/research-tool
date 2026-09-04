@@ -180,3 +180,20 @@ class TestPlacementsAreComplete:
         )
 
         assert merged[0].rank_label() == "関連4\n検索1\nランキング9"
+
+
+class TestIsRawCollectOutput:
+    def test_collectの生出力だと分かる(self) -> None:
+        from src.usecases.rival_research import is_raw_collect_output
+
+        assert is_raw_collect_output({"関連": [], "ranking_url": "https://..."}) is True
+
+    def test_ranking_urlがnullでも生出力(self) -> None:
+        from src.usecases.rival_research import is_raw_collect_output
+
+        assert is_raw_collect_output({"関連": [], "ranking_url": None}) is True
+
+    def test_絞り込んだJSONは生出力ではない(self) -> None:
+        from src.usecases.rival_research import is_raw_collect_output
+
+        assert is_raw_collect_output({"関連": [], "検索": [], "ランキング": []}) is False

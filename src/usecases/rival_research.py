@@ -97,3 +97,9 @@ def plan_column_insert(codes: list[str], after_code: str, new_code: str) -> int 
     if after_code not in stripped:
         raise ValueError(f"基準の列コード {after_code} がありません")
     return stripped.index(after_code) + 1
+
+
+def is_raw_collect_output(payload: dict) -> bool:
+    # collect は ranking_url を付けて返す。絞り込まずにそのまま write へ渡すと
+    # 同一判定を飛ばして無関係な商品まで行になるので、これで見分ける
+    return "ranking_url" in payload
