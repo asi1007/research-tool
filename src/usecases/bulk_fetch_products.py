@@ -5,10 +5,15 @@ from dataclasses import dataclass, field
 
 from src.domain.value_objects.asin import Asin
 from src.infrastructure.column_mapper import ColumnMapper
-from src.infrastructure.sheet_repository import GoogleSheetRepository, SheetTable
+from src.infrastructure.sheet_repository import (
+    DEFAULT_HEADER_ROW,
+    GoogleSheetRepository,
+    SheetTable,
+)
 from src.infrastructure.request_pacer import RequestPacer
 from src.infrastructure.shipping_calculator import InternationalShippingCalculator
 from src.usecases.product_info_fetcher import ProductInfoFetcher
+from src.usecases.row_relocator import relocate_updates
 from src.usecases.row_update_planner import RowUpdatePlanner
 
 logger = logging.getLogger(__name__)
@@ -75,15 +80,30 @@ class BulkFetchProductsUseCase:
         return result
 
     def _flush(
-        self, sheet_name: str, updates: dict[int, dict[int, object]], result: SheetResult
+        self, sheet_name: str, planned: list[tuple[str, dict[int, object]]], result: SheetResult
     ) -> None:
-        if not updates:
+        if not planned:
             return
 
-        cells = sum(len(columns) for columns in updates.values())
+        cells = sum(len(columns) for _, columns in planned)
         if self.dry_run:
             result.updated_cells += cells
             return
+
+        # 取得に時間がかかる間に行が挿入・削除されると読み取り時の行番号は別の商品を指す。
+        # 書き込む直前に ASIN で引き直す（2026-09-05 に実際に8行ずれた）
+        values = self.repository.read_values(sheet_name)
+        table = SheetTable(values)
+        asin_column = ColumnMapper(table.headers).column_index("asin")
+        updates, missing = relocate_updates(
+            values, asin_column=asin_column, planned=planned, header_rows=DEFAULT_HEADER_ROW
+        )
+        if missing:
+            logger.warning(
+                "行が見つからないため書き込みませんでした",
+                extra={"context": {"sheet": sheet_name, "asins": missing}},
+            )
+            result.failed.extend(missing)
 
         result.updated_cells += self.repository.apply_updates(sheet_name, updates)
         logger.info(
@@ -129,8 +149,8 @@ class BulkFetchProductsUseCase:
         planner: RowUpdatePlanner,
         result: SheetResult,
         sheet_name: str,
-    ) -> dict[int, dict[int, object]]:
-        updates: dict[int, dict[int, object]] = {}
+    ) -> list[tuple[str, dict[int, object]]]:
+        updates: list[tuple[str, dict[int, object]]] = []
 
         for position, (row_number, row, asin) in enumerate(targets):
             self.pacer.wait()
@@ -159,7 +179,7 @@ class BulkFetchProductsUseCase:
             result.fetched += 1
             shipping = self.shipping_calculator.calculate(product.size, product.weight_grams)
             if planned := planner.plan(row, product, shipping):
-                updates[row_number] = planned
+                updates.append((asin.value, planned))
                 logger.debug(
                     "更新内容",
                     extra={
@@ -177,6 +197,6 @@ class BulkFetchProductsUseCase:
 
             if self.checkpoint_size > 0 and len(updates) >= self.checkpoint_size:
                 self._flush(sheet_name, updates, result)
-                updates = {}
+                updates = []
 
         return updates

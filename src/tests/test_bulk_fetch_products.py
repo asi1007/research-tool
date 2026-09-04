@@ -14,11 +14,15 @@ HEADER_ROWS = [
 
 class FakeRepository:
     def __init__(self, data_rows: list[list]) -> None:
-        self.table = SheetTable(HEADER_ROWS + data_rows, header_row=3)
+        self.values = HEADER_ROWS + data_rows
+        self.table = SheetTable(self.values, header_row=3)
         self.applied: dict[str, dict] = {}
 
     def read_table(self, sheet_name: str, header_row: int = 3) -> SheetTable:
         return self.table
+
+    def read_values(self, sheet_name: str) -> list[list]:
+        return self.values
 
     def apply_updates(self, sheet_name: str, updates: dict) -> int:
         self.applied[sheet_name] = updates
@@ -223,3 +227,43 @@ class TestCheckpoint:
 
         assert repository.applied == {}
         assert result.updated_cells == 6
+
+
+class TestRowsMovedDuringFetch:
+    def test_取得中に行が挿入されてもASINで引き直して書く(self) -> None:
+        rows = [
+            ["", "", "B000000001", "", "", "", ""],
+            ["", "", "B000000002", "", "", "", ""],
+        ]
+        repository, fetcher = FakeRepository(rows), FakeFetcher()
+        original_fetch = fetcher.fetch
+
+        def fetch_then_insert(asin):
+            product = original_fetch(asin)
+            # 取得中に上へ1行挿入された状況。B000000001 は4行目から5行目へ動く
+            repository.values = HEADER_ROWS + [
+                ["", "", "B000000009", "", "", "", ""],
+                *rows,
+            ]
+            return product
+
+        fetcher.fetch = fetch_then_insert
+        _usecase(repository, fetcher).execute("シート")
+
+        assert set(repository.applied["シート"]) == {5, 6}
+
+    def test_行が消えていたら書かずに失敗として数える(self) -> None:
+        rows = [["", "", "B000000001", "", "", "", ""]]
+        repository, fetcher = FakeRepository(rows), FakeFetcher()
+        original_fetch = fetcher.fetch
+
+        def fetch_then_delete(asin):
+            product = original_fetch(asin)
+            repository.values = HEADER_ROWS + [["", "", "B000000002", "", "", "", ""]]
+            return product
+
+        fetcher.fetch = fetch_then_delete
+        result = _usecase(repository, fetcher).execute("シート")
+
+        assert repository.applied["シート"] == {}
+        assert result.failed == ["B000000001"]
