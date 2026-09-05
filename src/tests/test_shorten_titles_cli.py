@@ -207,7 +207,7 @@ class TestRun:
         assert result == 0
         assert repository.apply_updates_calls == [("タブA", {4: {7: "短縮A"}})]
 
-    def test_10文字超の項目だけ除いて残りは書き込む(self, caplog) -> None:
+    def test_上限超の項目だけ除いて残りは書き込む(self, caplog) -> None:
         values = _values(
             [
                 _row(asin="B000000001", title="商品A"),
@@ -219,7 +219,7 @@ class TestRun:
         cli = FakeClaudeCli(
             responses=[
                 '[{"index": 0, "short_title": "短縮A"}, '
-                '{"index": 1, "short_title": "12345678901"}, '
+                '{"index": 1, "short_title": "12345678901234"}, '
                 '{"index": 2, "short_title": "短縮C"}]'
             ]
         )
@@ -233,8 +233,8 @@ class TestRun:
         ]
         dropped_records = [r for r in caplog.records if r.context["asin"] == "B000000002"]
         assert len(dropped_records) == 1
-        assert dropped_records[0].context["short_title"] == "12345678901"
-        assert dropped_records[0].context["length"] == 11
+        assert dropped_records[0].context["short_title"] == "12345678901234"
+        assert dropped_records[0].context["length"] == 14
         assert dropped_records[0].context["row"] == 5
 
     def test_空文字の項目だけ除いて残りは書き込む(self, caplog) -> None:

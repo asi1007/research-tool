@@ -292,20 +292,20 @@ class TestParseBatchResponse:
         assert result.short_titles == {}
 
     def test_10文字ちょうどは許容する(self) -> None:
-        text = '[{"index": 0, "short_title": "1234567890"}]'
+        text = '[{"index": 0, "short_title": "1234567890123"}]'
 
         result = parse_batch_response(text, batch_size=1)
 
         assert result.error is None
-        assert result.short_titles == {0: "1234567890"}
-        assert len("1234567890") == MAX_SHORT_TITLE_LENGTH
+        assert result.short_titles == {0: "1234567890123"}
+        assert len("1234567890123") == MAX_SHORT_TITLE_LENGTH
         assert result.dropped == []
 
-    def test_10文字超の項目だけが落ちて残りは反映される(self) -> None:
+    def test_上限超の項目だけが落ちて残りは反映される(self) -> None:
         text = (
             '[{"index": 0, "short_title": "商品A"}, '
             '{"index": 1, "short_title": "商品B"}, '
-            '{"index": 2, "short_title": "12345678901"}, '
+            '{"index": 2, "short_title": "12345678901234"}, '
             '{"index": 3, "short_title": "商品D"}, '
             '{"index": 4, "short_title": "商品E"}]'
         )
@@ -315,7 +315,7 @@ class TestParseBatchResponse:
         assert result.error is None
         assert result.short_titles == {0: "商品A", 1: "商品B", 3: "商品D", 4: "商品E"}
         assert result.dropped == [
-            DroppedItem(index=2, short_title="12345678901", reason=REASON_TOO_LONG)
+            DroppedItem(index=2, short_title="12345678901234", reason=REASON_TOO_LONG)
         ]
 
     def test_空文字の項目だけが落ちて残りは反映される(self) -> None:
@@ -331,9 +331,9 @@ class TestParseBatchResponse:
         assert result.short_titles == {0: "商品A", 2: "商品C"}
         assert result.dropped == [DroppedItem(index=1, short_title="", reason=REASON_EMPTY)]
 
-    def test_100件中1件が10文字超なら99件が反映されその1件だけ落ちる(self) -> None:
+    def test_100件中1件が上限超なら99件が反映されその1件だけ落ちる(self) -> None:
         items = [f'{{"index": {i}, "short_title": "商品{i:02d}"}}' for i in range(100)]
-        items[42] = '{"index": 42, "short_title": "12345678901"}'
+        items[42] = '{"index": 42, "short_title": "12345678901234"}'
         text = "[" + ", ".join(items) + "]"
 
         result = parse_batch_response(text, batch_size=100)
@@ -404,7 +404,7 @@ class TestParseBatchResponse:
     def test_複数件落ちても残りはすべて反映される(self) -> None:
         text = (
             '[{"index": 0, "short_title": "商品A"}, '
-            '{"index": 1, "short_title": "12345678901"}, '
+            '{"index": 1, "short_title": "12345678901234"}, '
             '{"index": 2, "short_title": ""}, '
             '{"index": 3, "short_title": "商品D"}]'
         )

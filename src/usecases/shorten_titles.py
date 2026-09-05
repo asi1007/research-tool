@@ -9,7 +9,8 @@ from src.domain.value_objects.asin import Asin
 from src.infrastructure.column_codes import ColumnCodes
 
 HEADER_ROWS = 3
-MAX_SHORT_TITLE_LENGTH = 10
+# 商品名10文字 + 数量3文字（×30 など）を想定した上限
+MAX_SHORT_TITLE_LENGTH = 13
 DEFAULT_BATCH_SIZE = 100
 
 ASIN_CODE = "ASIN_SELL"
@@ -81,11 +82,15 @@ def build_prompt(titles: list[str]) -> str:
         f"{index}: {_sanitize_for_prompt(title)}" for index, title in enumerate(titles)
     )
     return (
-        "以下はECサイトの商品名の配列です。各商品名を全角10文字以内の短縮名にしてください。\n"
+        f"以下はECサイトの商品名の配列です。各商品名を{MAX_SHORT_TITLE_LENGTH}文字以内の短縮名にしてください。\n"
         "ルール:\n"
         "- 商品の実体が分かる名前にする\n"
-        "- ブランド名・宣伝文句・型番・入数・記号は落とす\n"
-        "- 記号や空白で埋めない\n"
+        "- ブランド名・宣伝文句・型番は落とす\n"
+        "- 入数（セット数）が商品名にあれば、末尾に ×30 の形で付ける\n"
+        "  例: 「アンブレラマーカー 30個セット」→「傘マーカー×30」\n"
+        "  例: 「靴下 メンズ 5足セット」→「靴下×5」\n"
+        "- 入数が書かれていない単品はそのまま。×1 は付けない\n"
+        "- 数量以外の記号や空白で埋めない\n"
         "- 出力は次のJSON配列のみ。説明文やコードフェンスは付けない\n"
         '[{"index": 0, "short_title": "..."}, ...]\n\n'
         "商品名一覧:\n"
