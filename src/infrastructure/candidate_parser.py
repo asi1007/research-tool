@@ -64,6 +64,7 @@ def parse_candidates(
                 province=_to_text(item.get("province")),
                 local_price=_to_price(item.get("price")),
                 quantity=_to_quantity(item.get("quantity")),
+                spec=_to_text(item.get("spec")),
             )
         )
 

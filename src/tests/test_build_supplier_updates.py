@@ -144,3 +144,71 @@ class TestBuildUpdates:
     def test_数量が不明な場合は式にそのまま1が表示される(self, codes: ColumnCodes) -> None:
         updates = build_updates(5, [candidate("620082943880", 0.03, quantity=1)], codes)
         assert updates[1] == "=C5*24*1"
+
+
+class TestSpec:
+    def test_規格を各候補の规格列へ書く(self) -> None:
+        codes = ColumnCodes(
+            [["LINK_LOWEST", "SPEC_LOWEST", "PRICE_LOWEST", "LOCALPRICE_LOWEST"]]
+        )
+        candidate = SupplierCandidate(
+            offer_id=OfferId.parse("123456789012"),
+            title="シリコン垫片",
+            company="工場",
+            province="広東",
+            local_price=2.5,
+            quantity=1,
+            spec="白色半透明",
+        )
+
+        updates = build_updates(4, [candidate], codes)
+
+        assert updates[1] == "白色半透明"
+
+    def test_規格が空なら书かない(self) -> None:
+        codes = ColumnCodes(
+            [["LINK_LOWEST", "SPEC_LOWEST", "PRICE_LOWEST", "LOCALPRICE_LOWEST"]]
+        )
+        candidate = SupplierCandidate(
+            offer_id=OfferId.parse("123456789012"),
+            title="シリコン垫片",
+            company="工場",
+            province="広東",
+            local_price=2.5,
+            quantity=1,
+            spec="",
+        )
+
+        updates = build_updates(4, [candidate], codes)
+
+        assert 1 not in updates
+
+    def test_候補2の规格は別の列へ書く(self) -> None:
+        codes = ColumnCodes(
+            [[
+                "LINK_LOWEST", "SPEC_LOWEST", "PRICE_LOWEST", "LOCALPRICE_LOWEST",
+                "LINK_BUY_OTHER1", "SPEC_BUY_OTHER1", "PRICE_BUY_OTHER1",
+                "CURRENCY_BUY_OTHER1", "LOCALPRICE_BUY_OTHER1",
+            ]]
+        )
+        def make(spec: str) -> SupplierCandidate:
+            return SupplierCandidate(
+                offer_id=OfferId.parse("123456789012"), title="t", company="c",
+                province="p", local_price=1.0, quantity=1, spec=spec,
+            )
+
+        updates = build_updates(4, [make("白"), make("黒")], codes)
+
+        assert updates[1] == "白"
+        assert updates[5] == "黒"
+
+    def test_価格が無くても规格は書く(self) -> None:
+        codes = ColumnCodes([["LINK_LOWEST", "SPEC_LOWEST", "PRICE_LOWEST"]])
+        candidate = SupplierCandidate(
+            offer_id=OfferId.parse("123456789012"), title="t", company="c",
+            province="p", local_price=None, quantity=1, spec="規格のみ",
+        )
+
+        updates = build_updates(4, [candidate], codes)
+
+        assert updates[1] == "規格のみ"

@@ -29,9 +29,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger(__name__)
 
 REQUIRED_WRITE_CODES = (
-    "LINK_LOWEST", "PRICE_LOWEST", "LOCALPRICE_LOWEST",
-    "LINK_BUY_OTHER1", "PRICE_BUY_OTHER1", "CURRENCY_BUY_OTHER1", "LOCALPRICE_BUY_OTHER1",
-    "LINK_BUY_OTHER2", "PRICE_BUY_OTHER2", "CURRENCY_BUY_OTHER2", "LOCALPRICE_BUY_OTHER2",
+    "LINK_LOWEST", "SPEC_LOWEST", "PRICE_LOWEST", "LOCALPRICE_LOWEST",
+    "LINK_BUY_OTHER1", "SPEC_BUY_OTHER1", "PRICE_BUY_OTHER1",
+    "CURRENCY_BUY_OTHER1", "LOCALPRICE_BUY_OTHER1",
+    "LINK_BUY_OTHER2", "SPEC_BUY_OTHER2", "PRICE_BUY_OTHER2",
+    "CURRENCY_BUY_OTHER2", "LOCALPRICE_BUY_OTHER2",
 )
 
 
@@ -112,6 +114,7 @@ def describe_candidates(candidates: list[SupplierCandidate]) -> list[dict]:
             "title": candidate.title,
             "company": candidate.company,
             "province": candidate.province,
+            "spec": candidate.spec,
             "local_price": candidate.local_price,
             "quantity": candidate.quantity,
         }

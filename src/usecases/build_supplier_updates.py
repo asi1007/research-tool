@@ -16,15 +16,18 @@ class CandidateSlot:
     price: str
     local_price: str
     currency: str | None
+    spec: str
 
 
 SLOTS = (
-    CandidateSlot("LINK_LOWEST", "PRICE_LOWEST", "LOCALPRICE_LOWEST", None),
+    CandidateSlot("LINK_LOWEST", "PRICE_LOWEST", "LOCALPRICE_LOWEST", None, "SPEC_LOWEST"),
     CandidateSlot(
-        "LINK_BUY_OTHER1", "PRICE_BUY_OTHER1", "LOCALPRICE_BUY_OTHER1", "CURRENCY_BUY_OTHER1"
+        "LINK_BUY_OTHER1", "PRICE_BUY_OTHER1", "LOCALPRICE_BUY_OTHER1",
+        "CURRENCY_BUY_OTHER1", "SPEC_BUY_OTHER1",
     ),
     CandidateSlot(
-        "LINK_BUY_OTHER2", "PRICE_BUY_OTHER2", "LOCALPRICE_BUY_OTHER2", "CURRENCY_BUY_OTHER2"
+        "LINK_BUY_OTHER2", "PRICE_BUY_OTHER2", "LOCALPRICE_BUY_OTHER2",
+        "CURRENCY_BUY_OTHER2", "SPEC_BUY_OTHER2",
     ),
 )
 
@@ -41,6 +44,10 @@ def build_updates(
 
     for slot, candidate in zip(SLOTS, candidates):
         _put(updates, codes.index_of(slot.link), candidate.url)
+
+        # 规格は価格が取れなくても残す。どの規格を見たかが後から追えなくなるため
+        if candidate.spec:
+            _put(updates, codes.index_of(slot.spec), candidate.spec)
 
         if candidate.local_price is None or candidate.local_price <= 0:
             continue

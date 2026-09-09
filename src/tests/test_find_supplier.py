@@ -105,8 +105,8 @@ class TestDropOccupiedColumns:
         kept, skipped = drop_occupied_columns(values, 5, updates, codes)
         assert kept == {0: "url0", 1: "=C5*24", 2: 0.03, 4: "=G5*24", 5: "CHY"}
         assert skipped == {
-            "LINK_BUY_OTHER1": "https://example.com/other1-existing",
-            "LOCALPRICE_BUY_OTHER1": "12.5",
+            REQUIRED_WRITE_CODES[3]: "https://example.com/other1-existing",
+            REQUIRED_WRITE_CODES[6]: "12.5",
         }
 
     def test_何も入っていなければ全て残す(self) -> None:
@@ -123,10 +123,11 @@ class TestDropOccupiedColumns:
             list(REQUIRED_WRITE_CODES), [], [], [],
             ["existing-url", "existing-price"],
         ]
+        first, second = REQUIRED_WRITE_CODES[0], REQUIRED_WRITE_CODES[1]
         updates = {0: "url-guess", 1: "=B5*24"}
         kept, skipped = drop_occupied_columns(values, 5, updates, codes)
         assert kept == {}
-        assert skipped == {"LINK_LOWEST": "existing-url", "PRICE_LOWEST": "existing-price"}
+        assert skipped == {first: "existing-url", second: "existing-price"}
 
 
 class TestDescribeCandidates:
@@ -138,6 +139,7 @@ class TestDescribeCandidates:
             province="浙江",
             local_price=0.03,
             quantity=1,
+            spec="10*4*2mm",
         )
         assert describe_candidates([candidate]) == [
             {
@@ -145,6 +147,7 @@ class TestDescribeCandidates:
                 "title": "强力磁铁",
                 "company": "雄尊磁铁厂",
                 "province": "浙江",
+                "spec": "10*4*2mm",
                 "local_price": 0.03,
                 "quantity": 1,
             }
@@ -207,7 +210,7 @@ class TestWriteAndHighlight:
                 repository, RaisingWorksheet(), "sheet", 5, {0: "url", 1: "=C5*24"}, codes
             )
         assert excinfo.value.row == 5
-        assert set(excinfo.value.columns) == {"LINK_LOWEST", "PRICE_LOWEST"}
+        assert set(excinfo.value.columns) == {"LINK_LOWEST", "SPEC_LOWEST"}
         assert repository.applied == {5: {0: "url", 1: "=C5*24"}}
 
 

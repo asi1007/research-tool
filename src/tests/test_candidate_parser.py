@@ -112,3 +112,24 @@ class TestParseCandidates:
     def test_数量キーが無い場合は1にする(self) -> None:
         candidates = parse_candidates([{"offerId": "1"}])
         assert candidates[0].quantity == 1
+
+
+class TestSpecField:
+    def test_specを読む(self) -> None:
+        candidates = parse_candidates([
+            {"offerId": "123456789012", "title": "t", "spec": "白色半透明", "price": 2.5}
+        ])
+
+        assert candidates[0].spec == "白色半透明"
+
+    def test_specが無ければ空文字(self) -> None:
+        candidates = parse_candidates([{"offerId": "123456789012", "title": "t"}])
+
+        assert candidates[0].spec == ""
+
+    def test_specの前後の空白は落とす(self) -> None:
+        candidates = parse_candidates([
+            {"offerId": "123456789012", "title": "t", "spec": "  32B白盒包装  "}
+        ])
+
+        assert candidates[0].spec == "32B白盒包装"
