@@ -54,6 +54,23 @@
     return variants;
   };
 
+  // C) 属性リスト形式（単一規格の工業品）
+  //    规格 / 产品类型 / 材质 … と属性が並び、末尾に「¥価格库存n」が来る。
+  //    価格行に库存が続くため fromSelection の正規表現に掛からず、空配列になっていた。
+  const fromAttributes = () => {
+    const box = document.querySelector('[class*="sku-selection"]');
+    if (!box) return [];
+    const lines = (box.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
+    const specLine = lines.find(s => s.startsWith('规格:'));
+    const priceLine = lines.find(s => /^¥\s*[\d.]+/.test(s));
+    if (!specLine || !priceLine) return [];
+    const price = parseFloat(priceLine.replace(/^¥\s*/, '').split('库存')[0]);
+    if (!isFinite(price)) return [];
+    return [{ spec: specLine.slice('规格:'.length), price }];
+  };
+
   const variants = fromTable();
-  return JSON.stringify(variants.length ? variants : fromSelection());
+  if (variants.length) return JSON.stringify(variants);
+  const selected = fromSelection();
+  return JSON.stringify(selected.length ? selected : fromAttributes());
 })()
