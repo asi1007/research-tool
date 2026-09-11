@@ -10,6 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.domain.value_objects.discovery_band import discovery_sheets
+from amazon_api import spapi_credentials
 from src.infrastructure.env import require_env
 from src.infrastructure.logging_config import configure_logging
 from src.infrastructure.sheet_repository import GoogleSheetRepository
@@ -42,10 +43,11 @@ def build_repository() -> GoogleSheetRepository:
 
 
 def build_client() -> SpApiReportsClient:
+    credentials = spapi_credentials()
     return SpApiReportsClient(
-        client_id=require_env("SP_API_CLIENT_ID"),
-        client_secret=require_env("SP_API_CLIENT_SECRET"),
-        refresh_token=require_env("SP_API_REFRESH_TOKEN"),
+        client_id=credentials.client_id,
+        client_secret=credentials.client_secret,
+        refresh_token=credentials.refresh_token,
     )
 
 

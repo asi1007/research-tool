@@ -12,6 +12,7 @@ from src.domain.value_objects.asin import Asin
 from src.domain.value_objects.discovery_band import discovery_sheets
 from src.infrastructure.ads_client import AdsApiError, AmazonAdsClient
 from src.infrastructure.column_codes import ColumnCodes
+from amazon_api import ads_credentials
 from src.infrastructure.env import require_env
 from src.infrastructure.logging_config import configure_logging
 from src.infrastructure.sheet_repository import GoogleSheetRepository
@@ -48,12 +49,13 @@ def build_repository() -> GoogleSheetRepository:
 
 
 def build_ads_client() -> AmazonAdsClient:
-    # 資格情報は広告プロジェクトと共有する（同じものを二重に持たない）
+    # プロファイルIDは広告プロジェクトの .env から、資格情報は共有マスターから
     load_dotenv(PROJECT_ROOT / require_env("AD_CREDENTIALS_ENV"))
+    credentials = ads_credentials()
     return AmazonAdsClient(
-        client_id=os.environ["AMAZON_CLIENT_ID"],
-        client_secret=os.environ["AMAZON_CLIENT_SECRET"],
-        refresh_token=os.environ["AMAZON_REFRESH_TOKEN"],
+        client_id=credentials.client_id,
+        client_secret=credentials.client_secret,
+        refresh_token=credentials.refresh_token,
         profile_id=os.environ["AMAZON_PROFILE_ID"],
         region=os.environ.get("AMAZON_REGION", "FE"),
     )

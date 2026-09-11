@@ -7,6 +7,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from amazon_api import spapi_credentials
 from src.infrastructure.env import require_env
 from src.infrastructure.exchange_rate_client import fetch_cny_to_jpy_rate
 from src.infrastructure.keepa_client import KeepaClient
@@ -101,12 +102,13 @@ def build_usecase(args: argparse.Namespace) -> BulkFetchProductsUseCase:
         spreadsheet_id=require_env("RESEARCH_SPREADSHEET_ID"),
     )
     keepa = KeepaClient(require_env("KEEPA_API_KEY"))
+    spapi = spapi_credentials()
     fetcher = ProductInfoFetcher(
         keepa=keepa,
         spapi=SpApiClient(
-            refresh_token=require_env("SP_API_REFRESH_TOKEN"),
-            client_id=require_env("SP_API_CLIENT_ID"),
-            client_secret=require_env("SP_API_CLIENT_SECRET"),
+            refresh_token=spapi.refresh_token,
+            client_id=spapi.client_id,
+            client_secret=spapi.client_secret,
         ),
     )
     calculator = InternationalShippingCalculator(
