@@ -7,6 +7,7 @@ from google.oauth2.service_account import Credentials
 from gspread.utils import absolute_range_name
 
 from src.infrastructure.column_mapper import normalize_header
+from src.usecases.sheet_appearance import SheetAppearance, build_appearance
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +202,47 @@ class GoogleSheetRepository:
             extra={"context": {"sheet": sheet_name, "column": letter, "code": code}},
         )
         return index
+
+    def read_appearance(self, sheet_name: str, template_rows: int) -> SheetAppearance:
+        worksheet = self.spreadsheet.worksheet(sheet_name)
+        last_column = column_letter(worksheet.col_count - 1)
+        response = self.spreadsheet.fetch_sheet_metadata(
+            {
+                "ranges": [absolute_range_name(sheet_name, f"A:{last_column}")],
+                "includeGridData": True,
+                "fields": (
+                    "sheets(properties,data(columnMetadata(pixelSize,hiddenByUser),"
+                    "rowMetadata(pixelSize)))"
+                ),
+            }
+        )
+        grid = response["sheets"][0]["data"][0]
+        return build_appearance(
+            properties=response["sheets"][0]["properties"],
+            column_metadata=grid.get("columnMetadata", []),
+            row_metadata=grid.get("rowMetadata", []),
+            template_rows=self._read_row_formats(sheet_name, template_rows, last_column),
+        )
+
+    def _read_row_formats(self, sheet_name: str, count: int, last_column: str) -> list[list[dict]]:
+        first = DEFAULT_HEADER_ROW + 1
+        last = DEFAULT_HEADER_ROW + count
+        response = self.spreadsheet.fetch_sheet_metadata(
+            {
+                "ranges": [absolute_range_name(sheet_name, f"A{first}:{last_column}{last}")],
+                "includeGridData": True,
+                "fields": "sheets(data(rowData(values(userEnteredFormat))))",
+            }
+        )
+        rows = response["sheets"][0]["data"][0].get("rowData", [])
+        return [row.get("values", []) for row in rows]
+
+    def apply_requests(self, requests: list[dict]) -> int:
+        if not requests:
+            return 0
+
+        self.spreadsheet.batch_update({"requests": requests})
+        return len(requests)
 
     def delete_rows(self, sheet_name: str, row_numbers: list[int]) -> int:
         if not row_numbers:
