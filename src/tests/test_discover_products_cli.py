@@ -1,3 +1,4 @@
+import pytest
 import argparse
 import subprocess
 import sys
@@ -6,6 +7,7 @@ from datetime import datetime, timezone
 
 import discover_products
 from discover_products import (
+    parse_args,
     fetch_command,
     keyword_command,
     run,
@@ -14,6 +16,7 @@ from discover_products import (
 )
 from src.domain.entities.product_info import ProductInfo
 from src.domain.value_objects.asin import Asin
+from src.domain.value_objects.discovery_criteria import DEFAULT_MAX_AGE_DAYS
 
 
 class TestFetchCommand:
@@ -116,6 +119,7 @@ def _args(**overrides: object) -> argparse.Namespace:
         "all_sheets": False,
         "max_pages": None,
         "max_lookups": None,
+        "max_age_days": DEFAULT_MAX_AGE_DAYS,
     }
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -415,3 +419,27 @@ class TestMaxLookups:
         run(_args(no_fetch=True), repository=repository, keepa=keepa)
 
         assert len(keepa.fetched[0]) == 10
+
+
+class TestMaxAgeDays:
+    def test_既定は条件の既定値で探す(self) -> None:
+        assert parse_args([]).max_age_days == DEFAULT_MAX_AGE_DAYS
+
+    def test_出品からの経過を延ばせる(self) -> None:
+        assert parse_args(["--max-age-days", "1095"]).max_age_days == 1095
+
+    def test_期間を問わないときはNoneにする(self) -> None:
+        assert parse_args(["--no-age-limit"]).max_age_days is None
+
+    def test_延ばす指定と問わない指定は同時に使えない(self) -> None:
+        with pytest.raises(SystemExit):
+            parse_args(["--max-age-days", "1095", "--no-age-limit"])
+
+    def test_指定した期間でKeepaを引く(self, monkeypatch) -> None:
+        keepa = FakeKeepa([Asin("B000000051")])
+        repository = FakeRepository(values=APPEND_SHEET)
+        monkeypatch.setattr(discover_products.subprocess, "run", _record([]))
+
+        run(_args(dry_run=True, all_sheets=True, max_age_days=None), repository=repository, keepa=keepa)
+
+        assert [criteria.max_age_days for criteria in keepa.criteria] == [None, None]

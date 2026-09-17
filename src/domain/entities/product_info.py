@@ -20,6 +20,8 @@ class ProductInfo:
     monthly_sold: int = 0
     root_category: int = 0
     category: str = ""
+    brand: str = ""
+    manufacturer: str = ""
 
     @property
     def is_fetched(self) -> bool:

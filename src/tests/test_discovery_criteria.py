@@ -4,6 +4,7 @@ import pytest
 
 from src.domain.value_objects.discovery_criteria import (
     EXCLUDED_BRANDS,
+    EXCLUDED_MAKERS,
     EXCLUDED_CATEGORIES,
     EXCLUDED_ROOT_CATEGORIES,
     DiscoveryCriteria,
@@ -31,6 +32,22 @@ class TestSelection:
 
     def test_出品からの経過は1年以内(self) -> None:
         assert DiscoveryCriteria().max_age_days == 365
+
+    def test_出品からの経過を延ばせる(self) -> None:
+        selection = DiscoveryCriteria(max_age_days=1095).selection(NOW)
+
+        assert selection["listedSince_gte"] == to_keepa_minutes(
+            datetime(2023, 8, 30, 0, 0, tzinfo=timezone.utc)
+        )
+
+    def test_出品からの経過を問わないときは条件に入れない(self) -> None:
+        selection = DiscoveryCriteria(max_age_days=None).selection(NOW)
+
+        assert "listedSince_gte" not in selection
+
+    def test_出品からの経過は1日以上(self) -> None:
+        with pytest.raises(ValueError):
+            DiscoveryCriteria(max_age_days=0)
 
     def test_月商50万円に必要な最低販売数をクエリに使う(self) -> None:
         # 1000円で50万円に届くには500個。この帯でこれ未満は価格が上限でも届かない
@@ -112,3 +129,14 @@ class TestExcludedBrands:
         lowered = {brand.lower() for brand in EXCLUDED_BRANDS}
 
         assert {"タカラトミー", "takara tomy", "オムロン", "omron", "コールマン", "coleman"} <= lowered
+
+
+class TestExcludedMakers:
+    def test_ユーザーが候補外にした有名ブランドを持つ(self) -> None:
+        # 2026-09-17 に d を付けて候補外にしたもの
+        lowered = {brand.lower() for brand in EXCLUDED_MAKERS}
+
+        assert {"トンボ", "ゼブラ", "パイロット", "ぺんてる", "コクヨ", "パナソニック", "zippo", "エンスカイ", "ikea"} <= lowered
+
+    def test_商品名で探すブランドとは重複させない(self) -> None:
+        assert not {b.lower() for b in EXCLUDED_MAKERS} & {b.lower() for b in EXCLUDED_BRANDS}

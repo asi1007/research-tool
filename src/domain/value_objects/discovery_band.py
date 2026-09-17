@@ -4,7 +4,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-from src.domain.value_objects.discovery_criteria import DiscoveryCriteria
+from src.domain.value_objects.discovery_criteria import DEFAULT_MAX_AGE_DAYS, DiscoveryCriteria
 
 SHEET_PREFIX = "自動調査"
 DEFAULT_DISCOVERY_SHEET = "自動調査1000円以下"
@@ -56,10 +56,11 @@ class DiscoveryBand:
 
         return None
 
-    def criteria(self) -> DiscoveryCriteria:
+    def criteria(self, max_age_days: int | None = DEFAULT_MAX_AGE_DAYS) -> DiscoveryCriteria:
         return DiscoveryCriteria(
             min_price_yen=self.min_price_yen,
             max_price_yen=self.max_price_yen,
+            max_age_days=max_age_days,
         )
 
 

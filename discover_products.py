@@ -10,7 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.domain.value_objects.asin import Asin
-from src.domain.value_objects.discovery_criteria import DiscoveryCriteria
+from src.domain.value_objects.discovery_criteria import DEFAULT_MAX_AGE_DAYS, DiscoveryCriteria
 from src.domain.value_objects.discovery_band import (
     DEFAULT_DISCOVERY_SHEET,
     DiscoveryBand,
@@ -33,9 +33,9 @@ DEFAULT_MAX_PAGES = 20
 logger = logging.getLogger("discover_products")
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Keepaで発売半年以内・月販1000個以上の商品を探し自動調査タブへ積む（価格帯はタブ名から読む）"
+        description="Keepaで出品から1年以内・月商50万円以上の商品を探し自動調査タブへ積む（価格帯はタブ名から読む）"
     )
     parser.add_argument(
         "--sheet",
@@ -57,6 +57,20 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help=f"Product Finder を引くページ数の上限（既定 {DEFAULT_MAX_PAGES}）。1ページ11トークン以上かかる",
     )
+    age = parser.add_mutually_exclusive_group()
+    age.add_argument(
+        "--max-age-days",
+        type=int,
+        default=DEFAULT_MAX_AGE_DAYS,
+        help=f"出品からの経過日数の上限（既定 {DEFAULT_MAX_AGE_DAYS}）。延ばすほど候補とトークン消費が増える",
+    )
+    age.add_argument(
+        "--no-age-limit",
+        dest="max_age_days",
+        action="store_const",
+        const=None,
+        help="出品からの経過を問わない。古い商品は国内ブランド品が大半になる",
+    )
     parser.add_argument(
         "--no-seasonal",
         action="store_true",
@@ -75,7 +89,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="書き込まず件数だけ表示する")
     parser.add_argument("--no-fetch", action="store_true", help="商品情報の取得を続けて行わない")
     parser.add_argument("--debug", action="store_true", help="DEBUGログを出力する")
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def build_repository() -> GoogleSheetRepository:
@@ -172,7 +186,7 @@ def discover_band(
     keepa: KeepaClient,
     known: set[str],
 ) -> int:
-    criteria = band.criteria()
+    criteria = band.criteria(max_age_days=args.max_age_days)
     max_pages = args.max_pages or DEFAULT_MAX_PAGES
     found = keepa.find_asins(criteria, datetime.now(timezone.utc), max_pages=max_pages)
     # 実測は既知ASINを除いてから行う。Keepa のトークンは1件1消費なので無駄打ちを避ける
@@ -189,6 +203,7 @@ def discover_band(
                 "sheet": band.sheet,
                 "min_price_yen": band.min_price_yen,
                 "max_price_yen": band.max_price_yen,
+                "max_age_days": criteria.max_age_days,
                 "found": len(found),
                 "unknown": len(unknown),
                 "new": len(fresh),

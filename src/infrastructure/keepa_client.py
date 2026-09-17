@@ -250,6 +250,8 @@ class KeepaClient:
             buy_box_price=KeepaClient._extract_buy_box_price(raw),
             monthly_sold=raw.get("monthlySold") or 0,
             root_category=raw.get("rootCategory") or 0,
+            brand=raw.get("brand") or "",
+            manufacturer=raw.get("manufacturer") or "",
         )
 
     @staticmethod

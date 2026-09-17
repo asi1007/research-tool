@@ -116,3 +116,17 @@ class TestKeepaMainImage:
 
     def test_imagesが空配列なら空文字(self) -> None:
         assert KeepaClient.extract(Asin("B000000001"), {"asin": "X", "images": []}).image_url == ""
+
+
+class TestExtractBrand:
+    def test_ブランドとメーカーを取る(self) -> None:
+        raw = {"title": "t", "brand": "トンボ(Tombow)", "manufacturer": "トンボ鉛筆"}
+
+        info = KeepaClient.extract(Asin("B000000001"), raw)
+
+        assert (info.brand, info.manufacturer) == ("トンボ(Tombow)", "トンボ鉛筆")
+
+    def test_無ければ空文字(self) -> None:
+        info = KeepaClient.extract(Asin("B000000001"), {"title": "t", "manufacturer": None})
+
+        assert (info.brand, info.manufacturer) == ("", "")

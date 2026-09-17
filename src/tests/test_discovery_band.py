@@ -5,6 +5,7 @@ from src.domain.value_objects.discovery_band import (
     DiscoveryBand,
     discovery_sheets,
 )
+from src.domain.value_objects.discovery_criteria import DEFAULT_MAX_AGE_DAYS
 
 
 class TestFromSheetName:
@@ -63,3 +64,16 @@ class TestDiscoverySheets:
         titles = ["自動調査1000円-2000円", "自動調査1000円以下"]
 
         assert discovery_sheets(titles) == ["自動調査1000円以下", "自動調査1000円-2000円"]
+
+
+class TestCriteriaAge:
+    def test_既定の出品からの経過は条件の既定値(self) -> None:
+        criteria = DiscoveryBand.from_sheet_name("自動調査500円以下").criteria()
+
+        assert criteria.max_age_days == DEFAULT_MAX_AGE_DAYS
+
+    def test_出品からの経過を指定できる(self) -> None:
+        band = DiscoveryBand.from_sheet_name("自動調査500円以下")
+
+        assert band.criteria(max_age_days=1095).max_age_days == 1095
+        assert band.criteria(max_age_days=None).max_age_days is None

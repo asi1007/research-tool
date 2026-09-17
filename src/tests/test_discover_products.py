@@ -228,3 +228,46 @@ class TestExcludedBrands:
         criteria = DiscoveryCriteria()
 
         assert len(select_by_revenue([self._product("B000000004", "")], criteria)) == 1
+
+
+class TestExcludedBrandField:
+    def _product(self, title: str, brand: str = "", manufacturer: str = "") -> ProductInfo:
+        return ProductInfo(
+            asin=Asin("B000000001"),
+            title=title,
+            brand=brand,
+            manufacturer=manufacturer,
+            buy_box_price=1000,
+            monthly_sold=1000,
+        )
+
+    def _selected(self, product: ProductInfo) -> bool:
+        return len(select_by_revenue([product], DiscoveryCriteria())) == 1
+
+    def test_ブランド欄が有名ブランドなら弾く(self) -> None:
+        assert self._selected(self._product("MONO 消しゴム", brand="トンボ(Tombow)")) is False
+
+    def test_括弧の中の英字表記でも弾く(self) -> None:
+        assert self._selected(self._product("マーカー", brand="Foo(ZEBRA)")) is False
+
+    def test_ブランド欄が違ってもメーカー欄で弾く(self) -> None:
+        # Keepa がブランドを取り違えることがある（Zebra Technologies はラベルプリンタの別会社）
+        product = self._product("油性ボールペン替芯", brand="Zebra Technologies", manufacturer="ゼブラ(ZEBRA)")
+
+        assert self._selected(product) is False
+
+    def test_互換品は商品名にブランドがあっても弾かない(self) -> None:
+        product = self._product("サーモス 交換用部品 JNLパッキンセット", brand="FUYUERO", manufacturer="FUYUERO")
+
+        assert self._selected(product) is True
+
+    def test_ブランド名を部分に含むだけの別ブランドは弾かない(self) -> None:
+        assert self._selected(self._product("ゼブラ柄 クッション", brand="ゼブラ柄ストア")) is True
+
+    def test_ブランド欄もメーカー欄も無ければ商品名で弾く(self) -> None:
+        assert self._selected(self._product("山崎実業 タワー マグネット収納")) is False
+
+    def test_ブランド欄があれば商品名のブランド表記では弾かない(self) -> None:
+        product = self._product("山崎実業 タワー 対応 交換用フック", brand="VEAGIA")
+
+        assert self._selected(product) is True

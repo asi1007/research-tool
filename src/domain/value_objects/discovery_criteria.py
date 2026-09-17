@@ -6,6 +6,7 @@ from math import ceil
 
 KEEPA_EPOCH = datetime(2011, 1, 1, tzinfo=timezone.utc)
 MIN_PER_PAGE = 50
+DEFAULT_MAX_AGE_DAYS = 365
 
 # 中国輸入で扱えないルートカテゴリ。IDは Keepa /category（domain=5）で取得したもの
 EXCLUDED_ROOT_CATEGORIES: tuple[int, ...] = (
@@ -67,6 +68,40 @@ EXCLUDED_BRANDS: tuple[str, ...] = (
     "パール金属",
 )
 
+# 有名ブランド。Keepa のブランド欄・メーカー欄だけで照合し、商品名では探さない。
+# 商品名では「サーモス 交換用部品」「ゼブラ柄」のように互換品や柄の説明と区別できないため。
+# 2026-09-17 にユーザーが d を付けて候補外にした商品のブランドが起点
+EXCLUDED_MAKERS: tuple[str, ...] = (
+    "トンボ",
+    "tombow",
+    "トンボ鉛筆",
+    "ゼブラ",
+    "zebra",
+    "パイロット",
+    "pilot",
+    "ぺんてる",
+    "pentel",
+    "三菱鉛筆",
+    "コクヨ",
+    "kokuyo",
+    "パナソニック",
+    "panasonic",
+    "zippo",
+    "エンスカイ",
+    "ensky",
+    "ikea",
+    "イケア",
+    "テルモ",
+    "ミカサ",
+    "mikasa",
+    "サーモス",
+    "thermos",
+    "スリーエム",
+    "3m",
+    "ニチバン",
+    "nichiban",
+)
+
 STANDARD_PRODUCT_TYPE = 0
 NO_AMAZON_OFFER = -1
 
@@ -80,7 +115,8 @@ class DiscoveryCriteria:
     min_price_yen: int = 1
     max_price_yen: int = 1000
     min_monthly_revenue_yen: int = 500_000
-    max_age_days: int = 365
+    # None は出品からの経過を問わない。古い商品は国内ブランド品が大半になる
+    max_age_days: int | None = DEFAULT_MAX_AGE_DAYS
     excluded_categories: tuple[int, ...] = field(default=EXCLUDED_CATEGORIES)
     per_page: int = MIN_PER_PAGE
 
@@ -91,6 +127,8 @@ class DiscoveryCriteria:
             )
         if self.per_page < MIN_PER_PAGE:
             raise ValueError(f"perPage は {MIN_PER_PAGE} 以上にする（Keepa が 400 を返す）")
+        if self.max_age_days is not None and self.max_age_days < 1:
+            raise ValueError(f"出品からの経過日数は1以上にする: {self.max_age_days}")
 
     def min_monthly_sold(self) -> int:
         # Keepa は「販売数×価格」で絞れない。帯の上限価格でも月商に届かない販売数を足切りに使う
@@ -100,12 +138,11 @@ class DiscoveryCriteria:
         return price_yen * monthly_sold >= self.min_monthly_revenue_yen
 
     def selection(self, now: datetime, page: int = 0) -> dict:
-        listed_since = now - timedelta(days=self.max_age_days)
         return {
             "current_NEW_gte": self.min_price_yen,
             "current_NEW_lte": self.max_price_yen,
             "monthlySold_gte": self.min_monthly_sold(),
-            "listedSince_gte": to_keepa_minutes(listed_since),
+            **self._listed_since(now),
             "productType": [STANDARD_PRODUCT_TYPE],
             "availabilityAmazon": [NO_AMAZON_OFFER],
             "categories_exclude": list(self.excluded_categories),
@@ -113,3 +150,8 @@ class DiscoveryCriteria:
             "perPage": self.per_page,
             "page": page,
         }
+
+    def _listed_since(self, now: datetime) -> dict:
+        if self.max_age_days is None:
+            return {}
+        return {"listedSince_gte": to_keepa_minutes(now - timedelta(days=self.max_age_days))}
