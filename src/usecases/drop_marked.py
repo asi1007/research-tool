@@ -4,6 +4,8 @@ import unicodedata
 
 from src.domain.value_objects.asin import Asin
 from src.infrastructure.column_codes import ColumnCodes
+from src.infrastructure.sheet_repository import column_letter, last_filled_row
+from src.usecases.formula_filler import rebase_formula
 
 DROP_MARK = "d"
 MARK_COLUMN_INDEX = 0
@@ -51,3 +53,41 @@ def build_transfer_rows(
             ]
         )
     return rows
+
+
+def _column_letter_map(values: list[list], target_values: list[list]) -> dict[str, str]:
+    source_codes = values[0] if values else []
+    target_codes = ColumnCodes(target_values)
+    return {
+        column_letter(index): column_letter(target_index)
+        for index, code in enumerate(source_codes)
+        if (target_index := target_codes.index_of(str(code))) is not None
+    }
+
+
+def plan_transfer(
+    values: list[list], target_values: list[list], row_numbers: list[int]
+) -> dict[int, dict[int, object]]:
+    # 行番号は移動先を書く直前に読んだ target_values から決める。先に読んだものを使い回すと、
+    # 別のタブから移した行を上書きする
+    column_map = _column_letter_map(values, target_values)
+    start = last_filled_row(target_values)
+    plan: dict[int, dict[int, object]] = {}
+
+    for offset, (row_number, row) in enumerate(
+        zip(row_numbers, build_transfer_rows(values, target_values, row_numbers))
+    ):
+        target_row = start + offset + 1
+        cells: dict[int, object] = {}
+        for index, cell in enumerate(row):
+            if not str(cell).strip():
+                continue
+            if str(cell).startswith("="):
+                rebased = rebase_formula(str(cell), row_number, target_row, column_map)
+                if rebased is None:
+                    continue
+                cell = rebased
+            cells[index] = cell
+        plan[target_row] = cells
+
+    return plan

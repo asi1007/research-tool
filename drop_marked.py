@@ -14,7 +14,7 @@ from src.infrastructure.sheet_repository import GoogleSheetRepository
 from src.usecases.drop_marked import (
     ASIN_CODE,
     DROP_MARK,
-    build_transfer_rows,
+    plan_transfer,
     marked_row_numbers,
 )
 from src.infrastructure.column_codes import ColumnCodes
@@ -52,11 +52,10 @@ def run(args: argparse.Namespace, repository: GoogleSheetRepository | None = Non
     load_dotenv(PROJECT_ROOT / ".env")
     repository = repository or build_repository()
 
-    rejected_values = repository.read_values(REJECTED_SHEET)
     total_moved = 0
 
     for sheet in resolve_sheets(args, repository):
-        total_moved += drop_sheet(args, sheet, rejected_values, repository)
+        total_moved += drop_sheet(args, sheet, repository)
 
     logger.info("完了しました", extra={"context": {"moved": total_moved}})
     return 0
@@ -65,7 +64,6 @@ def run(args: argparse.Namespace, repository: GoogleSheetRepository | None = Non
 def drop_sheet(
     args: argparse.Namespace,
     sheet: str,
-    rejected_values: list[list],
     repository: GoogleSheetRepository,
 ) -> int:
     values = repository.read_values(sheet)
@@ -82,7 +80,9 @@ def drop_sheet(
     if args.dry_run:
         return len(row_numbers)
 
-    repository.append_rows(REJECTED_SHEET, build_transfer_rows(values, rejected_values, row_numbers))
+    plan = plan_transfer(values, repository.read_values(REJECTED_SHEET), row_numbers)
+    repository.ensure_rows(REJECTED_SHEET, max(plan))
+    repository.apply_updates(REJECTED_SHEET, plan)
     repository.delete_rows(sheet, row_numbers)
 
     logger.info(

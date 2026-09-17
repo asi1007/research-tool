@@ -15,7 +15,7 @@ from src.infrastructure.env import require_env
 from src.infrastructure.logging_config import configure_logging
 from src.infrastructure.seasonal_verdict_store import JsonSeasonalVerdictStore
 from src.infrastructure.sheet_repository import GoogleSheetRepository
-from src.usecases.drop_marked import build_transfer_rows
+from src.usecases.drop_marked import plan_transfer
 from src.usecases.seasonal import (
     SEASONAL_SHEET,
     SeasonalCandidate,
@@ -77,7 +77,6 @@ def run(
     repository = repository or build_repository()
     cli = cli or ClaudeCli()
     verdicts = store.load()
-    seasonal_values = repository.read_values(SEASONAL_SHEET)
     total = 0
     exit_code = 0
 
@@ -88,7 +87,7 @@ def run(
         exit_code = exit_code or (0 if judged else 1)
         if not args.dry_run:
             store.save(verdicts)
-        total += move_rows(args, sheet, values, rows_to_move(candidates, verdicts), seasonal_values, repository)
+        total += move_rows(args, sheet, values, rows_to_move(candidates, verdicts), repository)
 
     logger.info("完了しました", extra={"context": {"moved": total}})
     return exit_code
@@ -139,7 +138,6 @@ def move_rows(
     sheet: str,
     values: list[list],
     row_numbers: list[int],
-    seasonal_values: list[list],
     repository: GoogleSheetRepository,
 ) -> int:
     if not row_numbers:
@@ -152,7 +150,9 @@ def move_rows(
     if args.dry_run:
         return len(row_numbers)
 
-    repository.append_rows(SEASONAL_SHEET, build_transfer_rows(values, seasonal_values, row_numbers))
+    plan = plan_transfer(values, repository.read_values(SEASONAL_SHEET), row_numbers)
+    repository.ensure_rows(SEASONAL_SHEET, max(plan))
+    repository.apply_updates(SEASONAL_SHEET, plan)
     repository.delete_rows(sheet, row_numbers)
 
     logger.info(

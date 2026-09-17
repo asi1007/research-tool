@@ -28,9 +28,12 @@ class FakeRepository:
     def read_values(self, sheet_name: str) -> list[list]:
         return self.values[sheet_name]
 
-    def append_rows(self, sheet_name: str, rows: list[list]) -> int:
-        self.appended.append((sheet_name, rows))
-        return len(rows)
+    def ensure_rows(self, sheet_name: str, last_row_number: int) -> int:
+        return 0
+
+    def apply_updates(self, sheet_name: str, updates: dict) -> int:
+        self.appended.append((sheet_name, [cells for _, cells in sorted(updates.items())]))
+        return sum(len(cells) for cells in updates.values())
 
     def delete_rows(self, sheet_name: str, row_numbers: list[int]) -> int:
         self.deleted.append((sheet_name, row_numbers))
@@ -85,7 +88,16 @@ class TestRun:
 
         assert result == 0
         assert repository.deleted == [(SHEET, [4])]
-        assert [row[2] for row in repository.appended[0][1]] == ["B000000001"]
+        assert [cells[2] for cells in repository.appended[0][1]] == ["B000000001"]
+
+    def test_移した数式は移動先の行を参照する(self) -> None:
+        repository = FakeRepository([_row("B000000001", "日傘")])
+        repository.values[SHEET][3][3] = "=C4*2"
+        repository.values["季節商品"].append(_row("B000000009", "既存の行"))
+
+        run(_args(), repository=repository, cli=FakeCli(seasonal={"日傘": True}), store=FakeStore())
+
+        assert repository.appended[0][1][0][3] == "=C5*2"
 
     def test_キーワードに当たらない行はClaudeに聞かない(self) -> None:
         repository = FakeRepository([_row("B000000001", "車用ベビーミラー")])

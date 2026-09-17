@@ -2,6 +2,7 @@ from src.usecases.drop_marked import (
     DROP_MARK,
     build_transfer_rows,
     marked_row_numbers,
+    plan_transfer,
 )
 
 CODE_ROW = ["んh", "CHECK2", "ASIN_SELL", "JAN", "UPC", "IMAGE", "TITLE_SELL", "TITLE_BUY"]
@@ -55,3 +56,41 @@ class TestBuildTransferRows:
         target_values = [TARGET_CODE_ROW]
 
         assert build_transfer_rows(values, target_values, []) == []
+
+
+class TestPlanTransfer:
+    SOURCE = [
+        ["んh", "ASIN_SELL", "PRICE_SELL", "NOTE_BUY_OTHER7", "NOTE_BUY_OTHER8"],
+        ["", "ASIN", "カート価格", "数量", "月間販売高"],
+        ["", "", "", "", ""],
+        ["", "B000000001", "900", "10", "=D4*C4"],
+        ["d", "B000000002", "800", "20", "=D5*C5"],
+    ]
+    TARGET = [
+        ["CHECK1", "NOTE_BUY_OTHER8", "ASIN_SELL", "NOTE_BUY_OTHER7", "PRICE_SELL"],
+        ["", "月間販売高", "ASIN", "数量", "カート価格"],
+        ["", "", "", "", ""],
+        ["", "", "B000000009", "", ""],
+    ]
+
+    def test_最終行の下へ移動先の列で書く(self) -> None:
+        plan = plan_transfer(self.SOURCE, self.TARGET, [5])
+
+        assert plan == {5: {1: "=D5*E5", 2: "B000000002", 3: "20", 4: "800"}}
+
+    def test_複数行は順に下へ積み行番号もそれぞれずらす(self) -> None:
+        plan = plan_transfer(self.SOURCE, self.TARGET, [4, 5])
+
+        assert plan[5][1] == "=D5*E5"
+        assert plan[6][1] == "=D6*E6"
+        assert plan[6][2] == "B000000002"
+
+    def test_移動先に無い列を参照する数式は書かない(self) -> None:
+        target = [row[:4] for row in self.TARGET]
+
+        plan = plan_transfer(self.SOURCE, target, [5])
+
+        assert 1 not in plan[5]
+
+    def test_移す行が無ければ空(self) -> None:
+        assert plan_transfer(self.SOURCE, self.TARGET, []) == {}
