@@ -26,7 +26,7 @@ logger = logging.getLogger("drop_marked")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="A列の印（d=候補外、s=季節商品）ごとに行を移し、元タブから削除する"
+        description="A列の印（d=候補外、s=季節商品、p=保留）ごとに行を移し、元タブから削除する"
     )
     parser.add_argument("--sheet", help="対象タブ（省略時はすべての自動調査タブ）")
     parser.add_argument("--dry-run", action="store_true", help="移さず対象だけ表示する")

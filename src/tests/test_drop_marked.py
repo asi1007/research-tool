@@ -49,7 +49,7 @@ class TestMarkedRowNumbers:
         assert marked_row_numbers(values, SEASONAL_MARK) == [5]
 
     def test_印ごとの移動先(self) -> None:
-        assert MARK_DESTINATIONS == {"d": "候補外", "s": "季節商品"}
+        assert MARK_DESTINATIONS == {"d": "候補外", "s": "季節商品", "p": "保留"}
 
 
 class TestBuildTransferRows:

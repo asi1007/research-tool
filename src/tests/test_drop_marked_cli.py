@@ -14,8 +14,9 @@ class FakeRepository:
             SHEET: [CODE_ROW, LABEL_ROW, UNIT_ROW, *rows],
             "候補外": [CODE_ROW, LABEL_ROW, UNIT_ROW],
             "季節商品": [CODE_ROW, LABEL_ROW, UNIT_ROW],
+            "保留": [CODE_ROW, LABEL_ROW, UNIT_ROW],
         }
-        self.written: dict[str, list[str]] = {"候補外": [], "季節商品": []}
+        self.written: dict[str, list[str]] = {"候補外": [], "季節商品": [], "保留": []}
 
     def sheet_titles(self) -> list[str]:
         return list(self.values)
@@ -55,12 +56,13 @@ class TestRun:
                 ["d", "", "B000000001", "不要"],
                 ["", "", "B000000002", "残す"],
                 ["s", "", "B000000003", "日傘"],
+                ["p", "", "B000000004", "判断保留"],
             ]
         )
 
         run(_args(), repository=repository)
 
-        assert repository.written == {"候補外": ["B000000001"], "季節商品": ["B000000003"]}
+        assert repository.written == {"候補外": ["B000000001"], "季節商品": ["B000000003"], "保留": ["B000000004"]}
         assert [row[2] for row in repository.values[SHEET][3:]] == ["B000000002"]
 
     def test_dryrunでは移さない(self) -> None:
@@ -68,5 +70,5 @@ class TestRun:
 
         run(_args(dry_run=True), repository=repository)
 
-        assert repository.written == {"候補外": [], "季節商品": []}
+        assert repository.written == {"候補外": [], "季節商品": [], "保留": []}
         assert len(repository.values[SHEET]) == 4

@@ -10,9 +10,15 @@ from src.usecases.seasonal import SEASONAL_SHEET
 
 DROP_MARK = "d"
 SEASONAL_MARK = "s"
+PENDING_MARK = "p"
 REJECTED_SHEET = "候補外"
-# A列の印ごとの移動先。どちらのタブも既知ASINの突合対象なので、移した商品は二度と積まれない
-MARK_DESTINATIONS: dict[str, str] = {DROP_MARK: REJECTED_SHEET, SEASONAL_MARK: SEASONAL_SHEET}
+PENDING_SHEET = "保留"
+# A列の印ごとの移動先。どのタブも既知ASINの突合対象なので、移した商品は二度と積まれない
+MARK_DESTINATIONS: dict[str, str] = {
+    DROP_MARK: REJECTED_SHEET,
+    SEASONAL_MARK: SEASONAL_SHEET,
+    PENDING_MARK: PENDING_SHEET,
+}
 MARK_COLUMN_INDEX = 0
 ASIN_CODE = "ASIN_SELL"
 HEADER_ROWS = 3
