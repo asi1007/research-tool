@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from src.usecases.formula_filler import find_template, plan_formula_updates, rebase_formula, rewrite_row
+from src.usecases.formula_filler import (
+    FORMULA_CODES,
+    find_template,
+    formula_columns,
+    plan_formula_updates,
+    rebase_formula,
+    rewrite_row,
+)
 
 
 class TestRewriteRow:
@@ -31,6 +38,12 @@ class TestFindTemplate:
         ]
 
         assert find_template(values, column=1, header_rows=3) == (5, "=A5*2")
+
+    def test_自分の行を参照していない数式は雛形にしない(self) -> None:
+        # 別のタブから写した行は元の行番号を参照したままのことがある
+        values = [["CODE"], ["h2"], ["h3"], ["", ""], ["", "=A40*2"], ["", "=A6*2"]]
+
+        assert find_template(values, column=1, header_rows=3) == (6, "=A6*2")
 
     def test_数式が一つも無ければNone(self) -> None:
         values = [["CODE"], ["h2"], ["h3"], ["", "100"]]
@@ -88,3 +101,18 @@ class TestRebaseFormula:
 
     def test_関数名は参照と見なさない(self) -> None:
         assert rebase_formula('=IF(T4="",NA(),K4/Y4)', 4, 9, {"T": "T", "K": "K", "Y": "Y"}) == '=IF(T9="",NA(),K9/Y9)'
+
+
+class TestFormulaColumns:
+    def test_利益とROIまわりの数式列を列コードで引く(self) -> None:
+        values = [["んh", "ASIN_SELL", "ROI", "INVESTMENT", "NOTE_BUY_OTHER8", "RETURN", "PROFIT_RATE",
+                   "PRICE_SELL", "PROFIT", "PRICE_LOWEST", "TAX", "COST"]]
+
+        assert formula_columns(values) == [2, 3, 4, 5, 6, 8, 10, 11]
+
+    def test_購入価格は数式列に含めない(self) -> None:
+        # 購入価格は仕入先を書くときに数量倍率つきで入る（=U5*24*10）。雛形で埋めると倍率が消える
+        assert "PRICE_LOWEST" not in FORMULA_CODES
+
+    def test_無い列は飛ばす(self) -> None:
+        assert formula_columns([["ASIN_SELL", "PROFIT"]]) == [1]

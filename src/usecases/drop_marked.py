@@ -6,8 +6,13 @@ from src.domain.value_objects.asin import Asin
 from src.infrastructure.column_codes import ColumnCodes
 from src.infrastructure.sheet_repository import column_letter, last_filled_row
 from src.usecases.formula_filler import rebase_formula
+from src.usecases.seasonal import SEASONAL_SHEET
 
 DROP_MARK = "d"
+SEASONAL_MARK = "s"
+REJECTED_SHEET = "候補外"
+# A列の印ごとの移動先。どちらのタブも既知ASINの突合対象なので、移した商品は二度と積まれない
+MARK_DESTINATIONS: dict[str, str] = {DROP_MARK: REJECTED_SHEET, SEASONAL_MARK: SEASONAL_SHEET}
 MARK_COLUMN_INDEX = 0
 ASIN_CODE = "ASIN_SELL"
 HEADER_ROWS = 3
@@ -19,11 +24,11 @@ def _cell(row: list, index: int) -> str:
     return str(row[index]).strip()
 
 
-def _is_drop_mark(value: str) -> bool:
-    return unicodedata.normalize("NFKC", value).strip().lower() == DROP_MARK
+def _has_mark(value: str, mark: str) -> bool:
+    return unicodedata.normalize("NFKC", value).strip().lower() == mark
 
 
-def marked_row_numbers(values: list[list]) -> list[int]:
+def marked_row_numbers(values: list[list], mark: str = DROP_MARK) -> list[int]:
     asin_index = ColumnCodes(values).index_of(ASIN_CODE)
     if asin_index is None:
         return []
@@ -31,7 +36,7 @@ def marked_row_numbers(values: list[list]) -> list[int]:
     return [
         HEADER_ROWS + offset + 1
         for offset, row in enumerate(values[HEADER_ROWS:])
-        if _is_drop_mark(_cell(row, MARK_COLUMN_INDEX))
+        if _has_mark(_cell(row, MARK_COLUMN_INDEX), mark)
         and Asin.parse(_cell(row, asin_index)) is not None
     ]
 

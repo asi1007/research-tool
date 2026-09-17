@@ -100,6 +100,13 @@ EXCLUDED_MAKERS: tuple[str, ...] = (
     "3m",
     "ニチバン",
     "nichiban",
+    # 2026-09-17 の市場規模の集計で月商上位に残ったもの
+    "ugreen",
+    "anker",
+    "シモジマ",
+    "shimojima",
+    "レゴ",
+    "lego",
 )
 
 STANDARD_PRODUCT_TYPE = 0

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 import discover_products
 from discover_products import (
+    formula_command,
     parse_args,
     fetch_command,
     keyword_command,
@@ -26,6 +27,15 @@ class TestFetchCommand:
         assert command[0] == sys.executable
         assert command[1].endswith("fetch_products.py")
         assert command[2:] == ["--sheet", "自動調査", "--interval", "auto"]
+
+
+class TestFormulaCommand:
+    def test_同じvenvのpythonでfill_formulasを呼ぶ(self) -> None:
+        command = formula_command("自動調査")
+
+        assert command[0] == sys.executable
+        assert command[1].endswith("fill_formulas.py")
+        assert command[2:] == ["--sheet", "自動調査"]
 
 
 class TestKeywordCommand:
@@ -167,7 +177,7 @@ class TestRun:
         assert result == 0
         assert repository.apply_updates_calls == []
         assert repository.ensure_rows_calls == []
-        assert len(recorded_commands) == 4
+        assert len(recorded_commands) == 5
 
     def test_no_fetchのときsubprocess_runが呼ばれない(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000009")])
@@ -196,6 +206,7 @@ class TestShortenTitles:
 
         assert [Path(command[1]).name for command in recorded] == [
             "fetch_products.py",
+            "fill_formulas.py",
             "shorten_titles.py",
             "fill_keywords.py",
             "move_seasonal.py",
@@ -219,6 +230,7 @@ class TestShortenTitles:
 
         assert [Path(command[1]).name for command in recorded] == [
             "fetch_products.py",
+            "fill_formulas.py",
             "shorten_titles.py",
             "move_seasonal.py",
         ]
@@ -232,6 +244,7 @@ class TestShortenTitles:
 
         assert [Path(command[1]).name for command in recorded] == [
             "fetch_products.py",
+            "fill_formulas.py",
             "fill_keywords.py",
             "move_seasonal.py",
         ]
@@ -261,6 +274,7 @@ class TestShortenTitles:
 
         assert [Path(command[1]).name for command in recorded] == [
             "fetch_products.py",
+            "fill_formulas.py",
             "shorten_titles.py",
             "fill_keywords.py",
             "move_seasonal.py",
@@ -280,9 +294,7 @@ class TestBandSelection:
         assert (criteria.min_price_yen, criteria.max_price_yen) == (1, 1000)
         assert repository.apply_updates_calls[0][0] == "自動調査1000円以下"
         assert recorded[0][2:] == ["--sheet", "自動調査1000円以下", "--interval", "auto"]
-        assert recorded[1][2:] == ["--sheet", "自動調査1000円以下"]
-        assert recorded[2][2:] == ["--sheet", "自動調査1000円以下"]
-        assert recorded[3][2:] == ["--sheet", "自動調査1000円以下"]
+        assert [command[2:] for command in recorded[1:]] == [["--sheet", "自動調査1000円以下"]] * 4
 
     def test_タブ名から価格帯を読み取って探す(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000002")])
@@ -319,9 +331,9 @@ class TestBandSelection:
         assert [
             (criteria.min_price_yen, criteria.max_price_yen) for criteria in keepa.criteria
         ] == [(1, 1000), (1001, 2000)]
-        assert [command[3] for command in recorded] == ["自動調査1000円以下"] * 4 + [
+        assert [command[3] for command in recorded] == ["自動調査1000円以下"] * 5 + [
             "自動調査1000円-2000円"
-        ] * 4
+        ] * 5
 
     def test_allのとき前のタブで積んだASINは次のタブへ積まない(self, monkeypatch) -> None:
         keepa = FakeKeepa([Asin("B000000005")])

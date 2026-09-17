@@ -14,25 +14,18 @@ from src.infrastructure.logging_config import configure_logging
 from src.infrastructure.sheet_repository import (
     DEFAULT_HEADER_ROW,
     GoogleSheetRepository,
-    SheetTable,
     column_letter,
 )
-from src.usecases.formula_filler import plan_formula_updates
+from src.usecases.formula_filler import formula_columns, plan_formula_updates
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger(__name__)
 
 ASIN_CODE = "ASIN_SELL"
-# 取得した値からは決まらない数式列。既存行の式をコピーして相対参照だけずらす
-FORMULA_HEADERS = ("月間販売高", "利益", "利益率")
-
-
-def normalize_header(label: object) -> str:
-    return str(label or "").replace("\n", "").strip()
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="月間販売高・利益・利益率の数式を空欄行へ入れる")
+    parser = argparse.ArgumentParser(description="ROI・投資額・月間販売高・リターン・利益率・利益・関税・原価の数式を空欄行へ入れる")
     parser.add_argument("--sheet", action="append", help="対象タブ（省略時は自動調査タブすべて）")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--debug", action="store_true")
@@ -55,18 +48,14 @@ def main() -> int:
             logger.warning("ASIN列がありません", extra={"context": {"sheet": sheet}})
             continue
 
-        headers = {normalize_header(h): i for i, h in enumerate(SheetTable(values).headers)}
-        columns = [headers[name] for name in FORMULA_HEADERS if name in headers]
+        columns = formula_columns(values)
         updates = plan_formula_updates(
             values, asin_column=asin_index, formula_columns=columns, header_rows=DEFAULT_HEADER_ROW
         )
 
         count = sum(len(cells) for cells in updates.values())
         total += count
-        print(
-            f"{sheet}: {count}セル "
-            f"({', '.join(f'{n}={column_letter(headers[n])}' for n in FORMULA_HEADERS if n in headers)})"
-        )
+        print(f"{sheet}: {count}セル ({', '.join(values[0][c] + '=' + column_letter(c) for c in columns)})")
         if args.dry_run or not updates:
             continue
 

@@ -114,6 +114,15 @@ def fetch_command(sheet: str) -> list[str]:
     ]
 
 
+def formula_command(sheet: str) -> list[str]:
+    return [
+        sys.executable,
+        str(PROJECT_ROOT / "fill_formulas.py"),
+        "--sheet",
+        sheet,
+    ]
+
+
 def shorten_command(sheet: str) -> list[str]:
     return [
         sys.executable,
@@ -229,7 +238,9 @@ def complete_rows(args: argparse.Namespace, sheet: str) -> int:
     exit_code = subprocess.run(fetch_command(sheet), cwd=PROJECT_ROOT, check=False).returncode
 
     # 季節商品への振り分けは最後。商品名が入っていないと判定できない
+    # 利益・ROI などの数式は取得した値から決まらないので、積んだ行へ既存行の式を写す
     for skipped, command in (
+        (False, formula_command(sheet)),
         (args.no_shorten, shorten_command(sheet)),
         (args.no_keywords, keyword_command(sheet)),
         (args.no_seasonal, seasonal_command(sheet)),

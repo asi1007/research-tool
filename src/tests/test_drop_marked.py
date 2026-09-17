@@ -1,5 +1,7 @@
 from src.usecases.drop_marked import (
     DROP_MARK,
+    MARK_DESTINATIONS,
+    SEASONAL_MARK,
     build_transfer_rows,
     marked_row_numbers,
     plan_transfer,
@@ -40,6 +42,14 @@ class TestMarkedRowNumbers:
 
     def test_印は既定でdだけ(self) -> None:
         assert DROP_MARK == "d"
+
+    def test_sの印は季節商品として拾う(self) -> None:
+        values = [CODE_ROW, LABEL_ROW, UNIT_ROW, _row("d", "B000000001", "x"), _row("ｓ", "B000000002", "y")]
+
+        assert marked_row_numbers(values, SEASONAL_MARK) == [5]
+
+    def test_印ごとの移動先(self) -> None:
+        assert MARK_DESTINATIONS == {"d": "候補外", "s": "季節商品"}
 
 
 class TestBuildTransferRows:

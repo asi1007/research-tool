@@ -3,6 +3,20 @@ from __future__ import annotations
 import re
 
 from src.domain.value_objects.asin import Asin
+from src.infrastructure.column_codes import ColumnCodes
+
+# 取得した値からは決まらない数式列。既存行の式を雛形にして行番号だけずらす。
+# 購入価格（PRICE_*）は仕入先を書くときに数量倍率つきで入るので含めない
+FORMULA_CODES: tuple[str, ...] = (
+    "ROI",
+    "INVESTMENT",
+    "NOTE_BUY_OTHER8",
+    "RETURN",
+    "PROFIT_RATE",
+    "PROFIT",
+    "TAX",
+    "COST",
+)
 
 
 def rewrite_row(formula: str, source_row: int, target_row: int) -> str:
@@ -48,9 +62,21 @@ def find_template(values: list[list], column: int, header_rows: int) -> tuple[in
         if column >= len(row):
             continue
         cell = str(row[column])
-        if cell.startswith("="):
-            return (header_rows + offset + 1, cell)
+        row_number = header_rows + offset + 1
+        if cell.startswith("=") and _refers_to_row(cell, row_number):
+            return (row_number, cell)
     return None
+
+
+def _refers_to_row(formula: str, row_number: int) -> bool:
+    # 別のタブから写した行は元の行番号を参照したままのことがあるので雛形にしない
+    unquoted = "".join(part for part in _QUOTED.split(formula) if not _QUOTED.fullmatch(part))
+    return any(int(row) == row_number for _, row in _CELL_REFERENCE.findall(unquoted))
+
+
+def formula_columns(values: list[list]) -> list[int]:
+    codes = ColumnCodes(values)
+    return sorted(index for code in FORMULA_CODES if (index := codes.index_of(code)) is not None)
 
 
 def plan_formula_updates(
