@@ -201,6 +201,11 @@ class TestBuildDecisionPrompt:
         assert "offerId" in prompt and "quantity" in prompt
         assert SKIP_PREFIX in prompt
 
+    def test_ブランド品と生き物は書かずに飛ばすと指示する(self) -> None:
+        prompt = build_decision_prompt(_target("B000000001"), SCRAPED)
+        assert "ブランド品" in prompt
+        assert "生き物" in prompt
+
     def test_ブラウザを使わないと明記する(self) -> None:
         # 候補は playwright が取り終えている。claude はもう検索しない
         assert "ブラウザ" in build_decision_prompt(_target("B000000001"), SCRAPED)
