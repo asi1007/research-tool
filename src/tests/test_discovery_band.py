@@ -3,6 +3,7 @@ import pytest
 from src.domain.value_objects.discovery_band import (
     DEFAULT_DISCOVERY_SHEET,
     DiscoveryBand,
+    band_for_price,
     discovery_sheets,
 )
 from src.domain.value_objects.discovery_criteria import DEFAULT_MAX_AGE_DAYS
@@ -77,3 +78,44 @@ class TestCriteriaAge:
 
         assert band.criteria(max_age_days=1095).max_age_days == 1095
         assert band.criteria(max_age_days=None).max_age_days is None
+
+
+class Test価格から帯を選ぶ:
+    """手で ASIN を積むとき、価格に合う自動調査タブを決める。
+
+    タブ名が唯一の正本。コード側に価格帯の表を持つと、タブを足したときにずれる。
+    """
+
+    SHEETS = [
+        "リリース",
+        "自動調査500円以下",
+        "自動調査500円-700円",
+        "自動調査700円-1000円",
+        "自動調査1000円-2000円",
+        "自動調査2000円以上",
+        "idea",
+    ]
+
+    def test_帯の中の価格はその帯を返す(self) -> None:
+        assert band_for_price(self.SHEETS, 498).sheet == "自動調査500円以下"
+        assert band_for_price(self.SHEETS, 999).sheet == "自動調査700円-1000円"
+        assert band_for_price(self.SHEETS, 1500).sheet == "自動調査1000円-2000円"
+
+    def test_境界はその帯の上限側に入る(self) -> None:
+        assert band_for_price(self.SHEETS, 500).sheet == "自動調査500円以下"
+        assert band_for_price(self.SHEETS, 501).sheet == "自動調査500円-700円"
+        assert band_for_price(self.SHEETS, 1000).sheet == "自動調査700円-1000円"
+        assert band_for_price(self.SHEETS, 1001).sheet == "自動調査1000円-2000円"
+
+    def test_上限なしの帯は高い価格を受ける(self) -> None:
+        assert band_for_price(self.SHEETS, 9800).sheet == "自動調査2000円以上"
+
+    def test_価格帯を読めないタブは無視する(self) -> None:
+        assert band_for_price(["リリース", "idea"], 498) is None
+
+    def test_どの帯にも入らなければNone(self) -> None:
+        assert band_for_price(["自動調査500円以下"], 900) is None
+
+    def test_価格が0以下なら落とす(self) -> None:
+        with pytest.raises(ValueError):
+            band_for_price(self.SHEETS, 0)

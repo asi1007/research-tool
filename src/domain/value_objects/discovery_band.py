@@ -74,3 +74,18 @@ def discovery_sheets(sheet_titles: list[str]) -> list[str]:
             continue
 
     return [band.sheet for band in sorted(bands, key=lambda band: band.min_price_yen)]
+
+
+def band_for_price(sheet_titles: list[str], price_yen: int) -> DiscoveryBand | None:
+    """価格に合う自動調査タブを選ぶ。
+
+    価格帯はタブ名が正本。コード側に表を持つと、タブを足したときにずれる。
+    """
+    if price_yen <= 0:
+        raise ValueError(f"価格は1円以上でなければならない: {price_yen}")
+
+    for title in discovery_sheets(sheet_titles):
+        band = DiscoveryBand.from_sheet_name(title)
+        if band.min_price_yen <= price_yen <= band.max_price_yen:
+            return band
+    return None
