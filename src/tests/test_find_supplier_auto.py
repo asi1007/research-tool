@@ -121,7 +121,7 @@ class TestRun:
     def _args(self, **overrides):
         import argparse
 
-        base = {"limit": 5, "sheet": None, "timeout": 60, "variant_offers": 2, "dry_run": False, "debug": False}
+        base = {"limit": 5, "interval": 0, "sheet": None, "timeout": 60, "variant_offers": 2, "dry_run": False, "debug": False}
         base.update(overrides)
         return argparse.Namespace(**base)
 

@@ -4,6 +4,7 @@ import argparse
 import logging
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -34,6 +35,8 @@ IMAGE_DIR = PROJECT_ROOT / "data" / "supplier_images"
 CLAUDE_BIN = Path("/opt/homebrew/bin/claude")
 # 1商品あたり5〜8手。5件で20分前後かかる
 DEFAULT_TIMEOUT_SECONDS = 2400
+# 連続で叩くとキャプチャが出る。12件を間隔なしで回して7件目で止まった（2026-09-19）
+DEFAULT_INTERVAL_SECONDS = 30
 EXIT_CAPTCHA = 2
 EXIT_BLOCKED = 3
 
@@ -47,6 +50,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=DEFAULT_BATCH, help=f"1回に処理する件数（既定 {DEFAULT_BATCH}）")
     parser.add_argument("--sheet", help="対象タブを1つに絞る（省略時は価格の安い自動調査タブから）")
     parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS, help="claude の実行上限（秒）")
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=DEFAULT_INTERVAL_SECONDS,
+        help=f"商品と商品の間を空ける秒数（既定 {DEFAULT_INTERVAL_SECONDS}）",
+    )
     parser.add_argument(
         "--variant-offers",
         type=int,
@@ -131,7 +140,9 @@ def run(args: argparse.Namespace, repository: GoogleSheetRepository | None = Non
     written_rows = 0
     empty_asins: list[str] = []
     found_count = 0
-    for sheet, target in batch:
+    for index, (sheet, target) in enumerate(batch):
+        if index and args.interval:
+            time.sleep(args.interval)
         try:
             scraped = collect(download_image(target, IMAGE_DIR), variant_offers=args.variant_offers)
         except CaptchaError:
