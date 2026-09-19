@@ -118,20 +118,20 @@ def run(args: argparse.Namespace, repository: GoogleSheetRepository | None = Non
     repository = repository or build_repository()
     skips = SupplierSkips.load(SKIPS_PATH)
 
-    sheet, batch = pick_batch(collect_targets(args, repository), skips, limit=args.limit)
-    if sheet is None:
+    batch = pick_batch(collect_targets(args, repository), skips, limit=args.limit)
+    if not batch:
         logger.info("仕入先が未記入の行はありません")
         return 0
 
     logger.info(
         "調べます",
-        extra={"context": {"sheet": sheet, "asins": [target.asin for target in batch]}},
+        extra={"context": {"targets": [f"{sheet} {target.asin}" for sheet, target in batch]}},
     )
 
     written_rows = 0
     empty_asins: list[str] = []
     found_count = 0
-    for target in batch:
+    for sheet, target in batch:
         try:
             scraped = collect(download_image(target, IMAGE_DIR), variant_offers=args.variant_offers)
         except CaptchaError:
@@ -167,7 +167,7 @@ def run(args: argparse.Namespace, repository: GoogleSheetRepository | None = Non
     if looks_blocked(len(empty_asins), found_count):
         logger.error(
             "1688が結果を返しません（遮断の可能性）。飛ばす記録は残しません",
-            extra={"context": {"sheet": sheet, "asins": empty_asins}},
+            extra={"context": {"asins": empty_asins}},
         )
         skips.save(SKIPS_PATH)
         return EXIT_BLOCKED
@@ -177,7 +177,7 @@ def run(args: argparse.Namespace, repository: GoogleSheetRepository | None = Non
     skips.save(SKIPS_PATH)
     logger.info(
         "終わりました",
-        extra={"context": {"sheet": sheet, "written": written_rows, "skipped": len(empty_asins)}},
+        extra={"context": {"written": written_rows, "skipped": len(empty_asins)}},
     )
     return 0
 

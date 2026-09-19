@@ -17,12 +17,19 @@ _SKIP_LINE = re.compile(rf"^{re.escape(SKIP_PREFIX)}\s*(\S+)\s*(.*)$", re.MULTIL
 
 def pick_batch(
     targets_by_sheet: dict[str, list[SupplierTarget]], skips: SupplierSkips, limit: int = DEFAULT_BATCH
-) -> tuple[str | None, list[SupplierTarget]]:
-    for sheet, targets in targets_by_sheet.items():
-        batch = [target for target in targets if not skips.contains(target.asin)][:limit]
-        if batch:
-            return sheet, batch
-    return None, []
+) -> list[tuple[str, SupplierTarget]]:
+    # 価格帯ごとに1件ずつ順に取る。1タブから固めて取ると安い帯だけが進む
+    queues = {
+        sheet: [target for target in targets if not skips.contains(target.asin)]
+        for sheet, targets in targets_by_sheet.items()
+    }
+    batch: list[tuple[str, SupplierTarget]] = []
+    while len(batch) < limit and any(queues.values()):
+        for sheet, queue in queues.items():
+            if not queue or len(batch) >= limit:
+                continue
+            batch.append((sheet, queue.pop(0)))
+    return batch
 
 
 def parse_skips(output: str) -> dict[str, str]:

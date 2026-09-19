@@ -17,31 +17,39 @@ def _target(asin: str, row: int = 4) -> SupplierTarget:
 
 
 class TestPickBatch:
-    def test_最初に対象がある安いタブから取る(self) -> None:
-        by_sheet = {"自動調査500円以下": [], "自動調査500円-700円": [_target("B000000001"), _target("B000000002")]}
+    def test_価格帯をまたいで1件ずつ取る(self) -> None:
+        by_sheet = {
+            "自動調査500円以下": [_target("B000000001"), _target("B000000002")],
+            "自動調査500円-700円": [_target("B000000003")],
+            "自動調査700円-1000円": [_target("B000000004"), _target("B000000005")],
+        }
 
-        sheet, batch = pick_batch(by_sheet, SupplierSkips(), limit=5)
+        batch = pick_batch(by_sheet, SupplierSkips(), limit=5)
 
-        assert sheet == "自動調査500円-700円"
-        assert [t.asin for t in batch] == ["B000000001", "B000000002"]
+        assert [asin.asin for _, asin in batch] == [
+            "B000000001", "B000000003", "B000000004", "B000000002", "B000000005",
+        ]
+
+    def test_対象が尽きたタブは飛ばす(self) -> None:
+        by_sheet = {"自動調査500円以下": [], "自動調査500円-700円": [_target("B000000001")]}
+
+        batch = pick_batch(by_sheet, SupplierSkips(), limit=5)
+
+        assert batch == [("自動調査500円-700円", by_sheet["自動調査500円-700円"][0])]
 
     def test_件数の上限で切る(self) -> None:
         by_sheet = {"A": [_target(f"B00000000{i}") for i in range(1, 6)]}
 
-        _, batch = pick_batch(by_sheet, SupplierSkips(), limit=2)
-
-        assert len(batch) == 2
+        assert len(pick_batch(by_sheet, SupplierSkips(), limit=2)) == 2
 
     def test_飛ばすと決めたASINは取らない(self) -> None:
         skips = SupplierSkips({"B000000001": "画像検索で外れた"})
         by_sheet = {"A": [_target("B000000001"), _target("B000000002")]}
 
-        _, batch = pick_batch(by_sheet, skips, limit=5)
+        assert [t.asin for _, t in pick_batch(by_sheet, skips, limit=5)] == ["B000000002"]
 
-        assert [t.asin for t in batch] == ["B000000002"]
-
-    def test_対象が無ければNone(self) -> None:
-        assert pick_batch({"A": []}, SupplierSkips(), limit=5) == (None, [])
+    def test_対象が無ければ空(self) -> None:
+        assert pick_batch({"A": []}, SupplierSkips(), limit=5) == []
 
 
 class TestParseSkips:
@@ -108,7 +116,7 @@ class TestRun:
     def _args(self, **overrides):
         import argparse
 
-        base = {"limit": 2, "sheet": None, "timeout": 60, "variant_offers": 2, "dry_run": False, "debug": False}
+        base = {"limit": 5, "sheet": None, "timeout": 60, "variant_offers": 2, "dry_run": False, "debug": False}
         base.update(overrides)
         return argparse.Namespace(**base)
 
