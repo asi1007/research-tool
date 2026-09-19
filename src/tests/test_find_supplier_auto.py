@@ -176,6 +176,20 @@ class TestRun:
         assert cli.run(self._args(), repository=repository) == 3
         assert SupplierSkips.load(path).contains("B000000001") is False
 
+    def test_claudeが失敗したら飛ばす記録に残さない(self, monkeypatch, tmp_path) -> None:
+        import find_supplier_auto as cli
+        from src.domain.value_objects.supplier_skips import SupplierSkips
+
+        path = tmp_path / "skips.json"
+        monkeypatch.setattr(cli, "SKIPS_PATH", path)
+        monkeypatch.setattr(cli, "download_image", lambda target, directory: tmp_path / "x.jpg")
+        monkeypatch.setattr(cli, "collect", lambda image_path, variant_offers=2: SCRAPED)
+        monkeypatch.setattr(cli, "run_claude", lambda *a, **k: (1, "claude を起動できません"))
+        repository = FakeRepository({"自動調査1000円以下": _sheet([["", "", "B000000001", '=HYPERLINK("u", IMAGE("https://img/1.jpg"))', "商品", ""]])})
+
+        assert cli.run(self._args(), repository=repository) == 0
+        assert SupplierSkips.load(path).contains("B000000001") is False
+
     def test_選ばれた候補を書き込む(self, monkeypatch, tmp_path) -> None:
         import find_supplier_auto as cli
 

@@ -119,6 +119,9 @@ def run_claude(prompt: str, timeout: int) -> tuple[int, str]:
         )
     except subprocess.TimeoutExpired:
         return 1, f"claude がタイムアウトしました（{timeout}秒）"
+    except OSError as error:
+        # 自動更新の最中は claude の実体が一瞬消える（2026-09-19 11:00 に遭遇）
+        return 1, f"claude を起動できません: {error}"
     return completed.returncode, (completed.stdout or "") + (completed.stderr or "")
 
 
@@ -168,6 +171,14 @@ def run(args: argparse.Namespace, repository: GoogleSheetRepository | None = Non
             continue
 
         code, output = run_claude(prompt, args.timeout)
+        if code != 0:
+            # claude 側の一時障害。飛ばす記録に残すと次回以降も調べられなくなる
+            logger.error(
+                "判断を取れません",
+                extra={"context": {"asin": target.asin, "output": output[-200:]}},
+            )
+            continue
+
         decided, skip_reason = parse_decision(output)
         if skip_reason is not None:
             skips.add(target.asin, skip_reason)
