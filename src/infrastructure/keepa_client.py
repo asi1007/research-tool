@@ -18,11 +18,25 @@ JAPAN_DOMAIN = 5
 MAX_ASINS_PER_REQUEST = 100
 _YYYYMMDD = re.compile(r"^\d{8}$")
 _BUY_BOX_CSV_KEYS = (18, 1, 0)
-MAX_TOKEN_WAIT_SECONDS = 300.0
+# 不足を埋めきる前に投げ直すと、その再試行がまたトークンを引いて不足が膨らむ。
+# 2026-09-18 に -67 から20回再試行しても復帰できず com.wada.market-research が落ちた
+MAX_TOKEN_WAIT_SECONDS = 1800.0
 DEFAULT_TOKEN_WAIT_SECONDS = 60.0
+DEFAULT_REFILL_PER_MINUTE = 5
+QUERY_TOKEN_COST = 11
 MAX_TOKEN_RETRIES = 20
 
 logger = logging.getLogger(__name__)
+
+
+def refill_wait_seconds(
+    tokens_left: int | None, cost: int, refill_ms: int | None, refill_per_minute: int | None
+) -> float:
+    rate = refill_per_minute or DEFAULT_REFILL_PER_MINUTE
+    shortfall = max(0, -(tokens_left or 0)) + cost
+    by_shortfall = shortfall / rate * 60
+    by_hint = (refill_ms / 1000) if refill_ms else DEFAULT_TOKEN_WAIT_SECONDS
+    return min(max(by_shortfall, by_hint), MAX_TOKEN_WAIT_SECONDS)
 
 
 class KeepaApiError(RuntimeError):
@@ -43,6 +57,7 @@ class KeepaClient:
         self.session = session or requests
         self.sleep = sleep
         self.tokens_left: int | None = None
+        self.refill_per_minute: int | None = None
 
     def fetch_product(self, asin: Asin) -> dict:
         for attempt in range(MAX_TOKEN_RETRIES):
@@ -55,7 +70,7 @@ class KeepaClient:
             self.tokens_left = payload.get("tokensLeft", self.tokens_left)
 
             if self._is_token_depleted(response, payload):
-                self._wait_for_refill(payload, asin, attempt)
+                self._wait_for_refill(payload, asin, attempt, cost=1)
                 continue
 
             if response.status_code != 200:
@@ -96,7 +111,7 @@ class KeepaClient:
             self.tokens_left = payload.get("tokensLeft", self.tokens_left)
 
             if self._is_token_depleted(response, payload):
-                self._wait_for_refill(payload, asins[0], attempt)
+                self._wait_for_refill(payload, asins[0], attempt, cost=len(asins))
                 continue
 
             if response.status_code != 200:
@@ -126,7 +141,10 @@ class KeepaClient:
 
         self.tokens_left = payload.get("tokensLeft", self.tokens_left)
         refill_rate = payload.get("refillRate")
-        return refill_rate if isinstance(refill_rate, int) and refill_rate > 0 else None
+        if isinstance(refill_rate, int) and refill_rate > 0:
+            self.refill_per_minute = refill_rate
+            return refill_rate
+        return None
 
     def find_asins(
         self,
@@ -185,9 +203,12 @@ class KeepaClient:
         raise KeepaApiError(f"Keepa token exhausted after {MAX_TOKEN_RETRIES} retries: page={page}")
 
     def _wait_for_query_refill(self, payload: dict, page: int, attempt: int) -> None:
-        refill_ms = payload.get("refillIn")
-        seconds = (refill_ms / 1000) if refill_ms else DEFAULT_TOKEN_WAIT_SECONDS
-        seconds = min(seconds, MAX_TOKEN_WAIT_SECONDS)
+        seconds = refill_wait_seconds(
+            payload.get("tokensLeft"),
+            QUERY_TOKEN_COST,
+            payload.get("refillIn"),
+            self.refill_per_minute,
+        )
 
         logger.warning(
             "Product Finder のトークンが枯渇したため補充を待機",
@@ -216,10 +237,10 @@ class KeepaClient:
             return True
         return (payload.get("tokensLeft") or 0) < 0
 
-    def _wait_for_refill(self, payload: dict, asin: Asin, attempt: int) -> None:
-        refill_ms = payload.get("refillIn")
-        seconds = (refill_ms / 1000) if refill_ms else DEFAULT_TOKEN_WAIT_SECONDS
-        seconds = min(seconds, MAX_TOKEN_WAIT_SECONDS)
+    def _wait_for_refill(self, payload: dict, asin: Asin, attempt: int, cost: int) -> None:
+        seconds = refill_wait_seconds(
+            payload.get("tokensLeft"), cost, payload.get("refillIn"), self.refill_per_minute
+        )
 
         logger.warning(
             "Keepaトークンが枯渇したため補充を待機",

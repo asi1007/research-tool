@@ -1,7 +1,13 @@
 import pytest
 
 from src.domain.value_objects.asin import Asin
-from src.infrastructure.keepa_client import KeepaApiError, KeepaClient
+from src.infrastructure.keepa_client import (
+    DEFAULT_REFILL_PER_MINUTE,
+    MAX_TOKEN_WAIT_SECONDS,
+    KeepaApiError,
+    KeepaClient,
+    refill_wait_seconds,
+)
 
 ASIN = Asin("B0CCX6ZXRV")
 
@@ -68,7 +74,18 @@ class TestTokenWait:
 
         _client(session, clock).fetch_product(ASIN)
 
-        assert clock.slept == [12.0]
+        # 不足1 + 今回の1トークン = 2トークン。5/分なので24秒（refillIn の12秒では足りない）
+        assert clock.slept == [24.0]
+
+    def test_不足が大きいほど長く待つ(self) -> None:
+        depleted = FakeResponse(429, {"tokensLeft": -67, "refillIn": 1000})
+        session = FakeSession([depleted, FakeResponse(200, OK_PAYLOAD)])
+        clock = FakeClock()
+
+        _client(session, clock).fetch_product(ASIN)
+
+        assert clock.slept == [pytest.approx(68 / DEFAULT_REFILL_PER_MINUTE * 60)]
+        assert session.request_count == 2
 
     def test_リトライ上限を超えたら例外を投げる(self) -> None:
         depleted = FakeResponse(429, {"tokensLeft": -3, "refillIn": 1000})
@@ -84,7 +101,7 @@ class TestTokenWait:
 
         _client(session, clock).fetch_product(ASIN)
 
-        assert clock.slept == [300.0]
+        assert clock.slept == [MAX_TOKEN_WAIT_SECONDS]
 
     def test_商品が見つからない場合はリトライしない(self) -> None:
         session = FakeSession([FakeResponse(200, {"products": [], "tokensLeft": 100})])
@@ -102,3 +119,18 @@ class TestTokenWait:
         client.fetch_product(ASIN)
 
         assert client.tokens_left == 250
+
+
+class TestRefillWaitSeconds:
+    def test_不足と今回の消費が埋まるまでの時間を返す(self) -> None:
+        # 不足10 + 100件分 = 110トークン。5/分なので22分
+        assert refill_wait_seconds(tokens_left=-10, cost=100, refill_ms=1000, refill_per_minute=5) == 1320.0
+
+    def test_補充ヒットのほうが長ければそちらを採る(self) -> None:
+        assert refill_wait_seconds(tokens_left=-1, cost=1, refill_ms=50000, refill_per_minute=5) == 50.0
+
+    def test_補充レートが不明なら既定値で計算する(self) -> None:
+        assert refill_wait_seconds(tokens_left=-4, cost=1, refill_ms=None, refill_per_minute=None) == 60.0
+
+    def test_上限を超えない(self) -> None:
+        assert refill_wait_seconds(tokens_left=-99999, cost=1, refill_ms=None, refill_per_minute=5) == MAX_TOKEN_WAIT_SECONDS

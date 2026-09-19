@@ -82,7 +82,8 @@ class TestFindAsins:
         asins = client.find_asins(DiscoveryCriteria(), NOW)
 
         assert [str(asin) for asin in asins] == ["B000000001"]
-        assert slept == [1.0]
+        # 不足5 + クエリ1回分の11トークン。5/分なので192秒待つ（refillIn の1秒では足りない）
+        assert slept == [192.0]
 
     def test_解釈できないASINは落とす(self) -> None:
         session = FakePostSession(
