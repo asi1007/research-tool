@@ -20,7 +20,9 @@ DEFAULT_VARIANT_OFFERS = 5
 UPLOAD_SETTLE_MS = 9000
 RESULT_SETTLE_MS = 10000
 DETAIL_SETTLE_MS = 9000
-CAPTCHA_SIGNS = ("验证码", "滑动验证", "拦截")
+# 「拦截」単体は商品名にも出る（沙发床底…拦截器）。遮断ページ特有の言い回しとURLで見る
+CAPTCHA_PHRASES = ("验证码拦截", "滑动验证", "安全验证", "请完成验证", "访问异常")
+CAPTCHA_URL_MARKERS = ("punish", "captcha", "_____tmd_____")
 
 # 商品カードは React 要素でリンクを持たないため、内部状態から offerId を取る
 CANDIDATES_JS = """
@@ -134,6 +136,12 @@ VARIANTS_JS = """
 """
 
 
+def is_captcha(url: str, text: str) -> bool:
+    if any(marker in url for marker in CAPTCHA_URL_MARKERS):
+        return True
+    return any(phrase in text for phrase in CAPTCHA_PHRASES)
+
+
 class CaptchaError(RuntimeError):
     """1688 がキャプチャを出した。人が通すまで先へ進めない。"""
 
@@ -147,8 +155,7 @@ async def _new_page(playwright, profile_dir: Path):
 
 
 async def _raise_if_captcha(page) -> None:
-    text = await page.inner_text("body")
-    if any(sign in text for sign in CAPTCHA_SIGNS):
+    if is_captcha(page.url, await page.inner_text("body")):
         raise CaptchaError("1688 がキャプチャを出しました")
 
 
