@@ -20,7 +20,12 @@ def pick_batch(
 ) -> list[tuple[str, SupplierTarget]]:
     # 価格帯ごとに1件ずつ順に取る。1タブから固めて取ると安い帯だけが進む
     queues = {
-        sheet: [target for target in targets if not skips.contains(target.asin)]
+        sheet: [
+            target
+            for target in targets
+            # ASIN が読めない行は書き込み時に行を引き直せない。人が見る
+            if Asin.parse(target.asin) is not None and not skips.contains(target.asin)
+        ]
         for sheet, targets in targets_by_sheet.items()
     }
     batch: list[tuple[str, SupplierTarget]] = []

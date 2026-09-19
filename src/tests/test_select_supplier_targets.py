@@ -108,3 +108,16 @@ class TestSelectTargets:
         targets = select_targets(SheetTable(values), ColumnCodes(values))
         assert len(targets) == 1
         assert targets[0].asin == ""
+
+
+class TestAsinNormalization:
+    def test_ASIN列が商品URLでもASINに直す(self) -> None:
+        url = "https://www.amazon.co.jp/BABY-WAX/dp/B00WUN4H04/ref=sr_1_11?th=1"
+        values = build_values([[*[""] * 2, url, "商品", "", IMAGE_A, ""]])
+
+        assert [target.asin for target in select_targets(SheetTable(values), ColumnCodes(values))] == ["B00WUN4H04"]
+
+    def test_ASINとして読めない値はそのまま残す(self) -> None:
+        values = build_values([[*[""] * 2, "メモ", "商品", "", IMAGE_A, ""]])
+
+        assert [target.asin for target in select_targets(SheetTable(values), ColumnCodes(values))] == ["メモ"]

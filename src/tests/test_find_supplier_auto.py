@@ -48,6 +48,11 @@ class TestPickBatch:
 
         assert [t.asin for _, t in pick_batch(by_sheet, skips, limit=5)] == ["B000000002"]
 
+    def test_ASINが読めない行は取らない(self) -> None:
+        by_sheet = {"A": [_target("メモ"), _target("B000000002")]}
+
+        assert [t.asin for _, t in pick_batch(by_sheet, SupplierSkips(), limit=5)] == ["B000000002"]
+
     def test_対象が無ければ空(self) -> None:
         assert pick_batch({"A": []}, SupplierSkips(), limit=5) == []
 

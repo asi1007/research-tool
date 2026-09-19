@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from src.domain.value_objects.asin import Asin
 from src.infrastructure.column_codes import ColumnCodes
 from src.infrastructure.image_formula import extract_image_url
 from src.infrastructure.sheet_repository import SheetTable
@@ -48,10 +49,14 @@ def select_targets(
         if not image_url:
             continue
 
+        # ASIN列には商品URLが混ざる。書き込み時の行探しにも画像の保存名にも使うので正規化する
+        raw_asin = _cell(row, asin_index)
+        asin = Asin.parse(raw_asin)
+
         targets.append(
             SupplierTarget(
                 row_number=table.row_number(data_index),
-                asin=_cell(row, asin_index),
+                asin=str(asin) if asin else raw_asin,
                 title=_cell(row, title_index),
                 image_url=image_url,
             )
