@@ -1,5 +1,6 @@
 import pytest
 
+from src.domain.value_objects.supplier_skips import SupplierSkips
 from src.infrastructure.column_codes import ColumnCodes
 from src.infrastructure.sheet_repository import SheetTable
 from src.usecases.select_supplier_targets import SupplierTarget, select_targets
@@ -121,3 +122,26 @@ class TestAsinNormalization:
         values = build_values([[*[""] * 2, "メモ", "商品", "", IMAGE_A, ""]])
 
         assert [target.asin for target in select_targets(SheetTable(values), ColumnCodes(values))] == ["メモ"]
+
+
+class TestSkipsAreExcludedBeforeTheLimit:
+    def test_飛ばすと決めたASINは件数に数えない(self) -> None:
+        values = build_values([
+            ["", "", "B0CCX6ZXRV", "商品A", "", IMAGE_A, ""],
+            ["", "", "B0CQ245KMT", "商品B", "", IMAGE_B, ""],
+        ])
+        skips = SupplierSkips({"B0CCX6ZXRV": "画像検索で外れた"})
+
+        targets = select_targets(SheetTable(values), ColumnCodes(values), limit=1, skips=skips)
+
+        assert [t.asin for t in targets] == ["B0CQ245KMT"]
+
+    def test_渡さなければ従来どおり全件返す(self) -> None:
+        values = build_values([
+            ["", "", "B0CCX6ZXRV", "商品A", "", IMAGE_A, ""],
+            ["", "", "B0CQ245KMT", "商品B", "", IMAGE_B, ""],
+        ])
+
+        targets = select_targets(SheetTable(values), ColumnCodes(values), limit=2)
+
+        assert [t.asin for t in targets] == ["B0CCX6ZXRV", "B0CQ245KMT"]

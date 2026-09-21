@@ -75,12 +75,16 @@ def build_repository() -> GoogleSheetRepository:
     )
 
 
-def collect_targets(args: argparse.Namespace, repository: GoogleSheetRepository) -> dict[str, list]:
+def collect_targets(
+    args: argparse.Namespace, repository: GoogleSheetRepository, skips: SupplierSkips
+) -> dict[str, list]:
     sheets = [args.sheet] if args.sheet else discovery_sheets(repository.sheet_titles())
     collected: dict[str, list] = {}
     for sheet in sheets:
         values = repository.read_values(sheet)
-        collected[sheet] = select_targets(SheetTable(values), ColumnCodes(values), limit=args.limit * 4)
+        collected[sheet] = select_targets(
+            SheetTable(values), ColumnCodes(values), limit=args.limit * 4, skips=skips
+        )
     return collected
 
 
@@ -131,7 +135,7 @@ def run(args: argparse.Namespace, repository: GoogleSheetRepository | None = Non
     repository = repository or build_repository()
     skips = SupplierSkips.load(SKIPS_PATH)
 
-    batch = pick_batch(collect_targets(args, repository), skips, limit=args.limit)
+    batch = pick_batch(collect_targets(args, repository, skips), skips, limit=args.limit)
     if not batch:
         logger.info("仕入先が未記入の行はありません")
         return 0

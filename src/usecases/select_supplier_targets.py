@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src.domain.value_objects.asin import Asin
+from src.domain.value_objects.supplier_skips import SupplierSkips
 from src.infrastructure.column_codes import ColumnCodes
 from src.infrastructure.image_formula import extract_image_url
 from src.infrastructure.sheet_repository import SheetTable
@@ -25,7 +26,10 @@ def _cell(row: list, index: int | None) -> str:
 
 
 def select_targets(
-    table: SheetTable, codes: ColumnCodes, limit: int = DEFAULT_LIMIT
+    table: SheetTable,
+    codes: ColumnCodes,
+    limit: int = DEFAULT_LIMIT,
+    skips: SupplierSkips | None = None,
 ) -> list[SupplierTarget]:
     asin_index = codes.index_of("ASIN_SELL")
     title_index = codes.index_of("TITLE_SELL")
@@ -52,6 +56,11 @@ def select_targets(
         # ASIN列には商品URLが混ざる。書き込み時の行探しにも画像の保存名にも使うので正規化する
         raw_asin = _cell(row, asin_index)
         asin = Asin.parse(raw_asin)
+
+        # 飛ばすと決めた行を数えてしまうと、それが溜まったタブでは上限まで埋まって
+        # 調べられる行が1件も出てこなくなる（2026-09-21 に 500円-700円 で 0件になった）
+        if skips is not None and asin is not None and skips.contains(str(asin)):
+            continue
 
         targets.append(
             SupplierTarget(
