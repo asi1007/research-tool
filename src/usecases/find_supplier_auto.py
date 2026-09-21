@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Callable
 
 from src.domain.value_objects.asin import Asin
 from src.domain.value_objects.supplier_skips import SupplierSkips
@@ -9,6 +10,9 @@ from src.usecases.select_supplier_targets import SupplierTarget
 
 SKIP_PREFIX = "SKIP:"
 EMPTY_CANDIDATES_REASON = "画像検索で候補が1件も出なかった"
+# 1688 はキャプチャもエラーも出さずに0件を返すことがある。1回の0件では「同款が無い」と区別できず、
+# 飛ばす記録を残すとその行は二度と調べられない。プロファイルを替えて引き直した結果で決める
+EMPTY_ATTEMPTS = 2
 # 1688 は累積アクセス量でキャプチャを出す。1回の自動実行はこの件数までにする
 DEFAULT_BATCH = 5
 
@@ -86,6 +90,21 @@ def build_decision_prompt(target: SupplierTarget, scraped: dict) -> str:
         "出力は次のJSON配列だけ（最大3件、1件目が本命）。説明は付けない:\n"
         '```json\n[{"offerId": "…", "spec": "…", "price": 9.46, "quantity": 1}]\n```'
     )
+
+
+def collect_until_candidates(
+    collect: Callable[[], dict],
+    attempts: int = EMPTY_ATTEMPTS,
+    on_retry: Callable[[int], None] | None = None,
+) -> dict:
+    scraped: dict = {}
+    for attempt in range(1, attempts + 1):
+        scraped = collect()
+        if scraped.get("candidates"):
+            return scraped
+        if on_retry is not None and attempt < attempts:
+            on_retry(attempt)
+    return scraped
 
 
 def skip_reason_for(scraped: dict) -> str | None:

@@ -21,6 +21,7 @@ from src.usecases.find_supplier_auto import (
     DEFAULT_BATCH,
     EMPTY_CANDIDATES_REASON,
     build_decision_prompt,
+    collect_until_candidates,
     looks_blocked,
     parse_decision,
     pick_batch,
@@ -147,7 +148,17 @@ def run(args: argparse.Namespace, repository: GoogleSheetRepository | None = Non
         if index and args.interval:
             time.sleep(args.interval)
         try:
-            scraped = collect(download_image(target, IMAGE_DIR), variant_offers=args.variant_offers)
+            image_path = download_image(target, IMAGE_DIR)
+            scraped = collect_until_candidates(
+                lambda: collect(image_path, variant_offers=args.variant_offers),
+                on_retry=lambda attempt: (
+                    logger.info(
+                        "0件だったので引き直します",
+                        extra={"context": {"asin": target.asin, "attempt": attempt}},
+                    ),
+                    time.sleep(args.interval),
+                ),
+            )
         except CaptchaError:
             # キャプチャは人が通すしかない。ここで止めてラッパーから Slack へ流す
             logger.error("CAPTCHA_STOP キャプチャで止まりました", extra={"context": {"asin": target.asin}})

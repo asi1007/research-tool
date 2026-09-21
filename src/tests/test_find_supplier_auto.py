@@ -1,6 +1,8 @@
 from src.domain.value_objects.supplier_skips import SupplierSkips
 from src.usecases.find_supplier_auto import (
+    EMPTY_ATTEMPTS,
     EMPTY_CANDIDATES_REASON,
+    collect_until_candidates,
     SKIP_PREFIX,
     build_decision_prompt,
     parse_decision,
@@ -277,3 +279,39 @@ class TestParseDecision:
 
         assert candidates == []
         assert skip is not None
+
+
+class TestCollectUntilCandidates:
+    def test_候補が出たらその場で返す(self) -> None:
+        calls = []
+
+        def collect() -> dict:
+            calls.append(1)
+            return {"candidates": [{"offer_id": "1"}]}
+
+        assert collect_until_candidates(collect)["candidates"] == [{"offer_id": "1"}]
+        assert len(calls) == 1
+
+    def test_0件なら引き直す(self) -> None:
+        results = [{"candidates": []}, {"candidates": [{"offer_id": "1"}]}]
+
+        collected = collect_until_candidates(lambda: results.pop(0))
+
+        assert collected["candidates"] == [{"offer_id": "1"}]
+
+    def test_既定の回数で打ち切る(self) -> None:
+        calls = []
+
+        def collect() -> dict:
+            calls.append(1)
+            return {"candidates": []}
+
+        assert collect_until_candidates(collect)["candidates"] == []
+        assert len(calls) == EMPTY_ATTEMPTS
+
+    def test_引き直す前に間を空けさせる(self) -> None:
+        waits = []
+
+        collect_until_candidates(lambda: {"candidates": []}, on_retry=waits.append)
+
+        assert waits == list(range(1, EMPTY_ATTEMPTS))
