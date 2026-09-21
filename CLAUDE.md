@@ -130,7 +130,7 @@ Amazon は販売時に必ず販売手数料を取るため 0 は正当な値に�
 
 **取得は playwright（ヘッドレス）で回る。** `find_supplier_search.py` が画像検索の候補と規格表を
 JSON で返し、`find_supplier_auto.py` が候補選びを `claude --print` に任せてシートへ書く
-（`com.wada.find-supplier` が3時間おき :40 に5件）。**プロファイルは毎回捨てる**。Cookie が溜まると
+（定期実行は下記「シートの更新は `update_research.py` 1本から」。1回5件）。**プロファイルは毎回捨てる**。Cookie が溜まると
 キャプチャもエラーも出さずに**結果0件**を返してくるため（詳細はスキル）。
 
 1688 URL が決まったあとの仕入先登録は、親リポジトリのスキル `register-supplier` で自動化済み。
@@ -151,7 +151,7 @@ JSON で返し、`find_supplier_auto.py` が候補選びを `claude --print` に
   ツリーが空の商品は弾けない（2026-09-03 に食品が1件通った）。実測の `rootCategory` で再度ふるう
 - **ポケモンカードはサブカテゴリで除外する。** トレカは「ホビー」配下にあり、ルートごと落とすと
   プラモ・鉄道模型まで消える（`2189358051` / `10345415051`）
-- **A列の `d`（候補外）・`s`（季節商品）・`p`（保留）は消すだけでは足りない。** `com.wada.drop-marked` が3時間おきに移す。 `drop_marked.py` で**移動先タブへ移してから**削除する。
+- **A列の `d`（候補外）・`s`（季節商品）・`p`（保留）は消すだけでは足りない。** 定期実行が移す（下記「シートの更新は `update_research.py` 1本から」）。 `drop_marked.py` で**移動先タブへ移してから**削除する。
   行を消しただけだと既知ASINから外れ、翌朝の定期実行でまた積まれる
 - **検索ワード(M)と広告単価(Y)は Amazon Ads API の推奨キーワードから入れる。** 資格情報は
   `data-engineer/dwld-ad-data/.env` を `AD_CREDENTIALS_ENV` 経由で借りる。**`bid` は円の1/100**（9700→97円）。
@@ -180,6 +180,32 @@ JSON で返し、`find_supplier_auto.py` が候補選びを `claude --print` に
 
 **gspread の `append_rows` に表の左端を判定させてはいけない。** 候補外タブで **DE列（108列目）から**
 書かれた。行番号と列位置を自分で決めて `apply_updates` で書く（`plan_append_rows`）。
+
+## シートの更新は `update_research.py` 1本から
+
+印の移動・商品情報・数式・仕入先を**順に**実行する。`--sheet` で1タブに絞れる（省略時は各工程の既定＝自動調査タブすべて）。
+
+```bash
+.venv/bin/python update_research.py --dry-run          # 工程のコマンドだけ出す
+.venv/bin/python update_research.py                    # 更新だけ
+.venv/bin/python update_research.py --discover         # 新商品の発見から
+```
+
+| ラベル | 時刻 | 実行 |
+|---|---|---|
+| `com.wada.market-research` | 毎日 6:30 | `update_research.py --discover` |
+| `com.wada.update-research` | 0:40・3:40・9:40・…（3時間おき、6:30 を避けて 6:40 は無し） | `update_research.py` |
+
+- **シートを触る入口をこの1本に絞ってある。** 以前は `com.wada.drop-marked`（3時間おき :10）と
+  `com.wada.find-supplier`（同 :40）が別ジョブで、`com.wada.market-research`（6:30）とは
+  10分差だった。読み取りから書き込みまでの間に他ジョブが行を挿入すると全件ずれる
+  （実際に8行ずれた。上記「書き込み先の行と列は、書く直前に自分で決める」）。2026-09-21 に統合した
+- **`.update_research.lock` で二重起動を防ぐ。** 前回が終わっていなければ WARNING を出して見送る
+  （終了コードは 0。異常ではないので Slack へは飛ばさない）
+- **工程どうしに依存は無い。** どれかが落ちても残りは実行し、最後に非ゼロで終える。
+  途中で止めると後続が丸ごと欠測する
+- **`fetch_products` は1タブ30件まで**（`FETCH_LIMIT_PER_SHEET`）。Keepa の補充レートで1件12秒かかり、
+  上限が無いと次の起動までに終わらず、ロックに弾かれ続けて仕入先調査へ永久に進めない
 
 ## ライバル商品調査
 

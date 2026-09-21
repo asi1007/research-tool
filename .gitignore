@@ -9,3 +9,6 @@ logs/
 .claude/worktrees/
 .superpowers/
 data/
+
+# update_research.py の二重起動防止
+.update_research.lock
