@@ -15,6 +15,9 @@ DISCOVER_MAX_LOOKUPS = 150
 # Keepa の補充レートで1件12秒。1回で溜まりを全部さらうと次の起動までに終わらず、
 # ロックに弾かれ続けて後続の工程（数式・仕入先）へ永久に進めない
 FETCH_LIMIT_PER_SHEET = 30
+# 工程ごとの「想定内の終了」。1688 のキャプチャ(2)と遮断(3)は相手側の事情で、
+# ジョブの障害ではない。ここで非ゼロを返すと Slack 通知が鳴り続け本当の失敗が埋もれる
+EXPECTED_EXIT_CODES: dict[str, set[int]] = {"find_supplier_auto.py": {2, 3}}
 # 同じシートへ並行して書き込むと読み取り時の行番号がずれる。入口をこの1本に絞る前提のロック
 LOCK_PATH = PROJECT_ROOT / ".update_research.lock"
 
@@ -95,6 +98,12 @@ def run(args: argparse.Namespace) -> int:
         step = Path(command[1]).name
         logger.info("工程を開始します", extra={"context": {"step": step, "sheet": args.sheet}})
         step_exit_code = subprocess.run(command, cwd=PROJECT_ROOT, check=False).returncode
+        if step_exit_code in EXPECTED_EXIT_CODES.get(step, set()):
+            logger.warning(
+                "工程を想定内の終了で切り上げました",
+                extra={"context": {"step": step, "exit_code": step_exit_code}},
+            )
+            continue
         if step_exit_code:
             logger.error(
                 "工程が失敗しました",

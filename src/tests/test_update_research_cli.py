@@ -201,3 +201,47 @@ class TestLock:
         main([])
 
         assert len(recorded) == 8
+
+
+class TestExpectedExitCodes:
+    def test_1688の遮断は失敗にせず次へ進む(self, monkeypatch) -> None:
+        # exit 3 は「1688 が結果0件を返した」で、ジョブの障害ではない。
+        # ここで非ゼロを返すと Slack 通知が鳴り続け、本当の失敗が埋もれる
+        monkeypatch.setattr(
+            update_research.subprocess,
+            "run",
+            _exit_with({"find_supplier_auto.py": 3}, recorded := []),
+        )
+
+        assert run(_args()) == 0
+        assert len(recorded) == 4
+
+    def test_キャプチャも失敗にしない(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            update_research.subprocess, "run", _exit_with({"find_supplier_auto.py": 2}, [])
+        )
+
+        assert run(_args()) == 0
+
+    def test_想定外の終了コードは失敗として返す(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            update_research.subprocess, "run", _exit_with({"find_supplier_auto.py": 1}, [])
+        )
+
+        assert run(_args()) == 1
+
+    def test_他の工程は想定内の扱いをしない(self, monkeypatch) -> None:
+        # 想定内の終了コードは工程ごとに決める。fetch_products の 3 は単なる失敗
+        monkeypatch.setattr(
+            update_research.subprocess, "run", _exit_with({"fetch_products.py": 3}, [])
+        )
+
+        assert run(_args()) == 3
+
+
+def _exit_with(codes: dict[str, int], recorded: list[list[str]]):
+    def fake_run(command, **kwargs) -> subprocess.CompletedProcess:
+        recorded.append(command)
+        return subprocess.CompletedProcess(command, codes.get(Path(command[1]).name, 0))
+
+    return fake_run

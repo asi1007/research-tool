@@ -95,7 +95,7 @@ class BulkFetchProductsUseCase:
         values = self.repository.read_values(sheet_name)
         table = SheetTable(values)
         asin_column = ColumnMapper(table.headers).column_index("asin")
-        updates, missing = relocate_updates(
+        updates, missing, ambiguous = relocate_updates(
             values, asin_column=asin_column, planned=planned, header_rows=DEFAULT_HEADER_ROW
         )
         if missing:
@@ -104,6 +104,13 @@ class BulkFetchProductsUseCase:
                 extra={"context": {"sheet": sheet_name, "asins": missing}},
             )
             result.failed.extend(missing)
+        if ambiguous:
+            # 同じ ASIN の行が複数ある。どちらを読んだか決められないので書かずに残す
+            logger.warning(
+                "同じASINの行が複数あるため書き込みませんでした",
+                extra={"context": {"sheet": sheet_name, "asins": ambiguous}},
+            )
+            result.failed.extend(ambiguous)
 
         result.updated_cells += self.repository.apply_updates(sheet_name, updates)
         logger.info(
