@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from amazon_api import spapi_credentials
+from src.domain.value_objects.discovery_band import discovery_sheets
 from src.infrastructure.env import require_env
 from src.infrastructure.exchange_rate_client import fetch_cny_to_jpy_rate
 from src.infrastructure.keepa_client import KeepaClient
@@ -23,16 +24,14 @@ from src.usecases.product_info_fetcher import ProductInfoFetcher
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_AUTO_INTERVAL_SECONDS = 12.0
-DEFAULT_SHEETS = (
+# 自動調査タブ以外の対象。自動調査タブは名前が価格帯で決まるのでシートから引く
+# （固定で書くとリネームに追従できず WorksheetNotFound で落ちる。2026-09-21）
+# 候補外・季節商品・保留は drop_marked の移動先なので対象にしない
+FIXED_SHEETS = (
     "優先",
-    "候補",
-    "リサーチ700円以下",
     "1000円周辺",
     "単価1500~",
     "単価2000~",
-    "ハードル高い",
-    "季節商品",
-    "候補外",
 )
 
 logger = logging.getLogger("fetch_products")
@@ -43,7 +42,7 @@ def parse_args() -> argparse.Namespace:
         description="C列のASIN/商品URLからKeepa・SP-APIで商品情報を取得しシートへ書き込む"
     )
     parser.add_argument("--sheet", action="append", dest="sheets", help="対象シート名（複数指定可）")
-    parser.add_argument("--all", action="store_true", help=f"既定の{len(DEFAULT_SHEETS)}シートを対象にする")
+    parser.add_argument("--all", action="store_true", help="自動調査タブと既定タブのうち実在するものを対象にする")
     parser.add_argument("--dry-run", action="store_true", help="書き込まず件数だけ表示する")
     parser.add_argument("--overwrite", action="store_true", help="既存の値も上書きする")
     parser.add_argument("--limit", type=int, help="シートごとの取得件数上限")
@@ -62,11 +61,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_sheets(args: argparse.Namespace) -> list[str]:
+def resolve_sheets(args: argparse.Namespace, sheet_titles: list[str]) -> list[str]:
     if args.sheets:
         return args.sheets
     if args.all:
-        return list(DEFAULT_SHEETS)
+        return [
+            *discovery_sheets(sheet_titles),
+            *[sheet for sheet in FIXED_SHEETS if sheet in sheet_titles],
+        ]
     return []
 
 
@@ -178,13 +180,13 @@ def main() -> int:
     configure_logging(logging.DEBUG if args.debug else logging.INFO)
     load_dotenv(PROJECT_ROOT / ".env")
 
-    sheets = resolve_sheets(args)
+    usecase = build_usecase(args)
+    sheets = resolve_sheets(args, usecase.repository.sheet_titles())
     if not sheets:
         print("対象シートを --sheet で指定するか --all を付けてください。", file=sys.stderr)
-        print(f"既定の対象: {', '.join(DEFAULT_SHEETS)}", file=sys.stderr)
+        print(f"自動調査タブと {', '.join(FIXED_SHEETS)} のうち実在するものが対象です。", file=sys.stderr)
         return 1
 
-    usecase = build_usecase(args)
     return run_sheets(usecase, sheets, args)
 
 
