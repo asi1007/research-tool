@@ -3,16 +3,18 @@ from __future__ import annotations
 import unicodedata
 
 from src.domain.value_objects.asin import Asin
+from src.domain.value_objects.research_sheets import (
+    PENDING_SHEET,
+    REJECTED_SHEET,
+    SEASONAL_SHEET,
+)
 from src.infrastructure.column_codes import ColumnCodes
 from src.infrastructure.sheet_repository import column_letter, last_filled_row
 from src.usecases.formula_filler import rebase_formula
-from src.usecases.seasonal import SEASONAL_SHEET
 
 DROP_MARK = "d"
 SEASONAL_MARK = "s"
 PENDING_MARK = "p"
-REJECTED_SHEET = "候補外"
-PENDING_SHEET = "保留"
 # A列の印ごとの移動先。どのタブも既知ASINの突合対象なので、移した商品は二度と積まれない
 MARK_DESTINATIONS: dict[str, str] = {
     DROP_MARK: REJECTED_SHEET,

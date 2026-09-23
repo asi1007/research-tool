@@ -72,3 +72,12 @@ class TestRun:
 
         assert repository.written == {"候補外": [], "季節商品": [], "保留": []}
         assert len(repository.values[SHEET]) == 4
+
+    def test_sheet省略時は移動先以外のタブをすべて回す(self) -> None:
+        repository = FakeRepository([["d", "", "B000000001", "不要"]])
+        repository.values["優先"] = [CODE_ROW, LABEL_ROW, UNIT_ROW, ["d", "", "B000000005", "優先の不要"]]
+        repository.values["テンプレ(新)"] = [CODE_ROW, LABEL_ROW, UNIT_ROW, ["d", "", "B000000006", "雛形"]]
+
+        run(_args(sheet=None), repository=repository)
+
+        assert repository.written["候補外"] == ["B000000001", "B000000005"]

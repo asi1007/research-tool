@@ -7,7 +7,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from src.domain.value_objects.discovery_band import discovery_sheets
+from src.domain.value_objects.research_sheets import candidate_sheets
 from src.infrastructure.env import require_env
 from src.infrastructure.logging_config import configure_logging
 from src.infrastructure.sheet_repository import GoogleSheetRepository
@@ -28,7 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="A列の印（d=候補外、s=季節商品、p=保留）ごとに行を移し、元タブから削除する"
     )
-    parser.add_argument("--sheet", help="対象タブ（省略時はすべての自動調査タブ）")
+    parser.add_argument("--sheet", help="対象タブ（省略時は移動先と非候補タブを除くすべて）")
     parser.add_argument("--dry-run", action="store_true", help="移さず対象だけ表示する")
     parser.add_argument("--debug", action="store_true", help="DEBUGログを出力する")
     return parser.parse_args()
@@ -44,7 +44,7 @@ def build_repository() -> GoogleSheetRepository:
 def resolve_sheets(args: argparse.Namespace, repository: GoogleSheetRepository) -> list[str]:
     if args.sheet:
         return [args.sheet]
-    return discovery_sheets(repository.sheet_titles())
+    return candidate_sheets(repository.sheet_titles())
 
 
 def run(args: argparse.Namespace, repository: GoogleSheetRepository | None = None) -> int:

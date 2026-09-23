@@ -5,12 +5,12 @@ import unicodedata
 from dataclasses import dataclass, field
 
 from src.domain.value_objects.asin import Asin
+from src.domain.value_objects.research_sheets import SEASONAL_SHEET
 from src.domain.value_objects.seasonal_verdicts import SeasonalVerdicts
 from src.infrastructure.column_codes import ColumnCodes
 from src.usecases.shorten_titles import strip_code_fence
 
 HEADER_ROWS = 3
-SEASONAL_SHEET = "季節商品"
 ASIN_CODE = "ASIN_SELL"
 TITLE_CODE = "TITLE_SELL"
 
